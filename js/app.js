@@ -115,6 +115,9 @@ const shelterDesignated = L.layerGroup(); // 指定避難所
 const quakeLayer = L.layerGroup().addTo(map);
 const userLayer = L.layerGroup().addTo(map); // 現在地マーカー
 
+// 狭い画面（スマホ）では、レイヤー切替と凡例が地図を覆ってしまうため折りたたむ
+const isNarrow = window.matchMedia("(max-width: 700px)").matches;
+
 L.control.layers(null, {
   "雨雲（ナウキャスト）": overlayRain,
   "洪水キキクル": overlayFlood,
@@ -127,14 +130,18 @@ L.control.layers(null, {
   "指定緊急避難場所": shelterEmergency,
   "指定避難所": shelterDesignated,
   "地震震央": quakeLayer,
-}, { collapsed: false, position: "topright" }).addTo(map);
+}, { collapsed: isNarrow, position: "topright" }).addTo(map);
 shelterEmergency.addTo(map);
 
 // キキクル凡例（気象庁公式配色）
+// 凡例。狭い画面では初期状態で閉じ、見出しをタップで開閉する（地図を覆わないため）
 const legend = L.control({ position: "bottomright" });
 legend.onAdd = () => {
   const div = L.DomUtil.create("div", "legend");
+  if (isNarrow) div.classList.add("collapsed");
   div.innerHTML =
+    '<button class="legend-toggle" type="button">凡例<span class="caret"></span></button>' +
+    '<div class="legend-body">' +
     '<b>危険度分布（キキクル）</b><br>' +
     '<span class="sw" style="background:#0c000c"></span>災害切迫<br>' +
     '<span class="sw" style="background:#aa00aa"></span>危険<br>' +
@@ -145,7 +152,13 @@ legend.onAdd = () => {
     '<b>浸水想定の深さ</b><br>' +
     '<span class="sw" style="background:#f7f5a9"></span>0.5m未満　<span class="sw" style="background:#ffd8c0"></span>0.5〜3m<br>' +
     '<span class="sw" style="background:#ffb7b7"></span>3〜5m　<span class="sw" style="background:#ff9191"></span>5〜10m<br>' +
-    '<span class="sw" style="background:#f285c9"></span>10〜20m　<span class="sw" style="background:#dc7adc"></span>20m〜';
+    '<span class="sw" style="background:#f285c9"></span>10〜20m　<span class="sw" style="background:#dc7adc"></span>20m〜' +
+    '</div>';
+  // 地図へのイベント伝播を止める（凡例のタップで地図が動かないように）
+  L.DomEvent.disableClickPropagation(div);
+  div.querySelector(".legend-toggle").addEventListener("click", () => {
+    div.classList.toggle("collapsed");
+  });
   return div;
 };
 legend.addTo(map);

@@ -698,6 +698,9 @@ svg.leaflet-image-layer.leaflet-interactive path {
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* 横スクロールを絶対に発生させない（スマホで地図やヘッダーがはみ出さないため） */
+html, body { max-width: 100%; overflow-x: hidden; }
+main, #map, #panels, header, footer { max-width: 100%; min-width: 0; }
 body {
   margin: 0;
   background: var(--bg);
@@ -721,6 +724,7 @@ header h1 {
   margin: 0;
   letter-spacing: 0.06em;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 header h1 .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
 #cop-level {
@@ -756,6 +760,9 @@ header h1 .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-
   margin-left: auto;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 #clock .dtg { font-weight: 700; letter-spacing: 0.08em; }
 #clock .jst { color: var(--muted); font-size: 12px; }
@@ -779,6 +786,22 @@ main {
   main { grid-template-columns: 1fr; height: auto; }
   #map { height: 55vh; }
   #panels { border-left: none; }
+}
+
+/* 狭い画面（スマホ）: ヘッダーが溢れないよう情報量を絞る */
+@media (max-width: 700px) {
+  header { padding: 8px 10px; gap: 8px; }
+  header h1 { font-size: 15px; }
+  header h1 .sub { display: none; }        /* 副題は畳む（タイトルで自明なため） */
+  #cop-level { font-size: 13px; padding: 4px 10px; }
+  #btn-about { font-size: 0; padding: 5px 9px; }  /* ⓘ アイコンのみ表示 */
+  #btn-about::before { content: "ⓘ"; font-size: 14px; }
+  #clock .dtg { font-size: 12px; }
+  #clock .jst { font-size: 10px; }
+}
+/* 特に狭い端末: 時計はJSTのみ */
+@media (max-width: 420px) {
+  #clock .dtg { display: none; }
 }
 
 /* ---------- パネル共通 ---------- */
@@ -1054,11 +1077,44 @@ main {
   color: var(--ink-2);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 10px;
   font-size: 11px;
   line-height: 1.7;
+  max-width: 60vw;
 }
 .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; }
+.legend-toggle {
+  display: none;              /* 広い画面では常時展開なのでボタン自体を出さない */
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.legend-toggle .caret {
+  float: right;
+  margin-left: 8px;
+  border: 4px solid transparent;
+  border-top-color: currentColor;
+  margin-top: 7px;
+}
+.legend.collapsed .legend-toggle .caret { border-top-color: transparent; border-bottom-color: currentColor; margin-top: 3px; }
+.legend-body { padding: 6px 10px; }
+.legend.collapsed .legend-body { display: none; }
+
+/* 狭い画面（スマホ）: 凡例は畳んでボタン表示にし、地図を隠さない */
+@media (max-width: 700px) {
+  .legend-toggle { display: block; }
+  .legend { max-width: 78vw; }
+  .legend.collapsed { background: rgba(26, 26, 25, 0.95); }
+  /* Leafletのレイヤー切替ボタンをタップしやすい大きさに */
+  .leaflet-control-layers-toggle { width: 42px !important; height: 42px !important; background-size: 24px 24px !important; }
+  .leaflet-control-layers-expanded { max-height: 62vh; overflow-y: auto; max-width: 78vw; }
+  .leaflet-touch .leaflet-bar a { width: 34px; height: 34px; line-height: 34px; }
+}
 
 /* ---------- フッター ---------- */
 footer {
@@ -1479,6 +1535,9 @@ const shelterDesignated = L.layerGroup(); // 指定避難所
 const quakeLayer = L.layerGroup().addTo(map);
 const userLayer = L.layerGroup().addTo(map); // 現在地マーカー
 
+// 狭い画面（スマホ）では、レイヤー切替と凡例が地図を覆ってしまうため折りたたむ
+const isNarrow = window.matchMedia("(max-width: 700px)").matches;
+
 L.control.layers(null, {
   "雨雲（ナウキャスト）": overlayRain,
   "洪水キキクル": overlayFlood,
@@ -1491,14 +1550,18 @@ L.control.layers(null, {
   "指定緊急避難場所": shelterEmergency,
   "指定避難所": shelterDesignated,
   "地震震央": quakeLayer,
-}, { collapsed: false, position: "topright" }).addTo(map);
+}, { collapsed: isNarrow, position: "topright" }).addTo(map);
 shelterEmergency.addTo(map);
 
 // キキクル凡例（気象庁公式配色）
+// 凡例。狭い画面では初期状態で閉じ、見出しをタップで開閉する（地図を覆わないため）
 const legend = L.control({ position: "bottomright" });
 legend.onAdd = () => {
   const div = L.DomUtil.create("div", "legend");
+  if (isNarrow) div.classList.add("collapsed");
   div.innerHTML =
+    '<button class="legend-toggle" type="button">凡例<span class="caret"></span></button>' +
+    '<div class="legend-body">' +
     '<b>危険度分布（キキクル）</b><br>' +
     '<span class="sw" style="background:#0c000c"></span>災害切迫<br>' +
     '<span class="sw" style="background:#aa00aa"></span>危険<br>' +
@@ -1509,7 +1572,13 @@ legend.onAdd = () => {
     '<b>浸水想定の深さ</b><br>' +
     '<span class="sw" style="background:#f7f5a9"></span>0.5m未満　<span class="sw" style="background:#ffd8c0"></span>0.5〜3m<br>' +
     '<span class="sw" style="background:#ffb7b7"></span>3〜5m　<span class="sw" style="background:#ff9191"></span>5〜10m<br>' +
-    '<span class="sw" style="background:#f285c9"></span>10〜20m　<span class="sw" style="background:#dc7adc"></span>20m〜';
+    '<span class="sw" style="background:#f285c9"></span>10〜20m　<span class="sw" style="background:#dc7adc"></span>20m〜' +
+    '</div>';
+  // 地図へのイベント伝播を止める（凡例のタップで地図が動かないように）
+  L.DomEvent.disableClickPropagation(div);
+  div.querySelector(".legend-toggle").addEventListener("click", () => {
+    div.classList.toggle("collapsed");
+  });
   return div;
 };
 legend.addTo(map);
