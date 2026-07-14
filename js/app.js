@@ -236,8 +236,21 @@ async function updateWarnings() {
 }
 
 // ============================================================
-// アメダス実況
+// アメダス実況（WBGT簡易推定つき）
 // ============================================================
+// WBGT区分（環境省 熱中症予防情報サイトの5段階区分）
+const WBGT_CLASSES = [
+  { min: 31, label: "危険", bg: "#ff2800", fg: "#ffffff" },
+  { min: 28, label: "厳重警戒", bg: "#ff9900", fg: "#1a1a00" },
+  { min: 25, label: "警戒", bg: "#f2e700", fg: "#1a1a00" },
+  { min: 21, label: "注意", bg: "#7ecef4", fg: "#00202e" },
+  { min: -Infinity, label: "ほぼ安全", bg: "#2a78d6", fg: "#ffffff" },
+];
+// 小野・登内(2014)の推定式（気温・湿度のみの簡易形。日射・風は未考慮）
+function wbgtEstimate(t, rh) {
+  return 0.735 * t + 0.0374 * rh + 0.00292 * t * rh - 4.064;
+}
+
 async function updateAmedas() {
   try {
     const latest = (await (await fetch(`${JMA}/amedas/data/latest_time.txt`, { cache: "no-store" })).text()).trim();
@@ -245,6 +258,7 @@ async function updateAmedas() {
     const ts = `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}${two(d.getHours())}${two(d.getMinutes())}00`;
     const all = await getJSON(`${JMA}/amedas/data/map/${ts}.json`);
     let heavyRain = false;
+    let heat = null; // 最大WBGT {w, name}
     const tiles = CONFIG.amedas.map((st) => {
       const o = all[st.id];
       if (!o) return `<div class="obs-tile"><div class="name">${st.name}</div><div>欠測</div></div>`;
@@ -256,9 +270,18 @@ async function updateAmedas() {
       const wd = v("windDirection");
       const hum = v("humidity");
       if (r1 >= 20 || r24 >= 100) heavyRain = true;
+      // WBGT簡易推定（気温・湿度が揃う時のみ）
+      let wbgtRow = "";
+      if (temp !== null && hum !== null) {
+        const w = wbgtEstimate(temp, hum);
+        const cls = WBGT_CLASSES.find((c) => w >= c.min);
+        if (!heat || w > heat.w) heat = { w, name: st.name };
+        wbgtRow = `<div class="row"><span>WBGT</span><span class="v"><span class="wbgt-chip" style="background:${cls.bg};color:${cls.fg}">${w.toFixed(1)} ${cls.label}</span></span></div>`;
+      }
       return `<div class="obs-tile">
         <div class="name">${st.name}</div>
         <div class="temp">${temp === null ? "--" : temp.toFixed(1)}<span class="unit">℃</span></div>
+        ${wbgtRow}
         <div class="row"><span>雨1h</span><span class="v ${r1 >= 10 ? "rain-warn" : ""}">${r1 === null ? "--" : r1.toFixed(1)}mm</span></div>
         <div class="row"><span>雨24h</span><span class="v ${r24 >= 80 ? "rain-warn" : ""}">${r24 === null ? "--" : r24.toFixed(1)}mm</span></div>
         <div class="row"><span>風</span><span class="v">${wd === null ? "--" : WIND_DIR[wd] || "--"} ${wind === null ? "--" : wind.toFixed(1)}m/s</span></div>
@@ -270,7 +293,8 @@ async function updateAmedas() {
     $("#upd-obs").textContent = `観測 ${two(t.getHours())}:${two(t.getMinutes())}`;
     $("#dot-obs").className = "dot ok";
     state.heavyRain = heavyRain;
-    reorderPanels();
+    state.heat = heat;
+    renderJudge(); // 熱中症・強雨を状況判断とパネル優先順位に反映
   } catch (e) {
     console.error(e);
     setFresh("obs", false);
@@ -525,6 +549,14 @@ function renderJudge() {
       reasons.push({ tag: "地震", text: `24時間以内に近傍で地震（${q.anm} M${q.mag} 最大震度${q.maxi}・約${Math.round(q.dist)}km）` });
     }
   }
+  // 熱中症（WBGT簡易推定。33以上=熱中症警戒アラートの発表基準相当）
+  if (state.heat && state.heat.w >= 31) {
+    level = Math.max(level, state.heat.w >= 33 ? 2 : 1);
+    reasons.push({
+      tag: "熱中症",
+      text: `${state.heat.name}のWBGT簡易推定が${state.heat.w.toFixed(1)}（${state.heat.w >= 33 ? "警戒アラート基準相当" : "危険"}）`,
+    });
+  }
 
   const def = LEVEL_DEFS[level];
   const el = $("#cop-level");
@@ -616,53 +648,51 @@ function nearestClass(rgb, classes, maxDist = 80) {
 }
 
 // タイル画像を読み、該当地点のピクセル色と周辺（±radius px）の色一覧を返す。
-// 404（=データなし）は null。想定区域の帯は幅数px程度のことがあるため、
-// 地点だけでなく周辺も見て安全側に判定する（z16で8px ≒ 約20m）。
-function sampleArea(urlTemplate, lat, lon, z, radius = 0) {
-  return new Promise((resolve) => {
-    const n = 2 ** z;
-    const xf = (lon + 180) / 360 * n;
-    const lr = lat * Math.PI / 180;
-    const yf = (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * n;
-    const x = Math.floor(xf), y = Math.floor(yf);
-    const px = Math.min(255, Math.floor((xf - x) * 256));
-    const py = Math.min(255, Math.floor((yf - y) * 256));
-    const url = urlTemplate.replace("{z}", z).replace("{x}", x).replace("{y}", y);
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    const timer = setTimeout(() => resolve(null), 10000);
-    img.onerror = () => { clearTimeout(timer); resolve(null); };
-    img.onload = () => {
-      clearTimeout(timer);
-      try {
-        const c = document.createElement("canvas");
-        c.width = c.height = 256;
-        const ctx = c.getContext("2d");
-        ctx.drawImage(img, 0, 0);
-        const cd = ctx.getImageData(px, py, 1, 1).data;
-        const center = cd[3] === 0 ? null : [cd[0], cd[1], cd[2]];
-        const colors = [];
-        if (radius > 0) {
-          const x0 = Math.max(0, px - radius), y0 = Math.max(0, py - radius);
-          const w = Math.min(255, px + radius) - x0 + 1, h = Math.min(255, py + radius) - y0 + 1;
-          const d = ctx.getImageData(x0, y0, w, h).data;
-          const seen = new Set();
-          for (let i = 0; i < d.length; i += 4) {
-            if (d[i + 3] === 0) continue;
-            const k = `${d[i]},${d[i + 1]},${d[i + 2]}`;
-            if (!seen.has(k)) { seen.add(k); colors.push([d[i], d[i + 1], d[i + 2]]); }
-          }
-        }
-        resolve({ center, colors });
-      } catch (e) { console.error("sampleArea", e); resolve(null); }
-    };
-    img.src = url;
-  });
-}
-// 地点ピクセルのみ（キキクル用。z10で1px ≒ 約150mなので近傍判定は不要）
-async function samplePixel(urlTemplate, lat, lon, z) {
-  const r = await sampleArea(urlTemplate, lat, lon, z, 0);
-  return r ? r.center : null;
+// 想定区域の帯は幅数px程度のことがあるため、地点だけでなく周辺も見て安全側に判定する（z16で8px ≒ 約20m）。
+// 返り値の意味を厳密に分ける（防災情報として最重要な設計判断）:
+//   { nodata: true }  … タイルが404 = その場所に公表データなし（区域外と表示してよい）
+//   { nodata: false } … タイルあり。center/colors で色判定
+//   null              … 通信失敗・タイムアウト等 = 「判定できず」（区域外と表示してはならない）
+async function sampleArea(urlTemplate, lat, lon, z, radius = 0) {
+  const n = 2 ** z;
+  const xf = (lon + 180) / 360 * n;
+  const lr = lat * Math.PI / 180;
+  const yf = (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * n;
+  const x = Math.floor(xf), y = Math.floor(yf);
+  const px = Math.min(255, Math.floor((xf - x) * 256));
+  const py = Math.min(255, Math.floor((yf - y) * 256));
+  const url = urlTemplate.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 10000);
+    const resp = await fetch(url, { signal: ctl.signal });
+    clearTimeout(timer);
+    if (resp.status === 404) return { nodata: true, center: null, colors: [] };
+    if (!resp.ok) return null;
+    const bmp = await createImageBitmap(await resp.blob());
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bmp, 0, 0);
+    const cd = ctx.getImageData(px, py, 1, 1).data;
+    const center = cd[3] === 0 ? null : [cd[0], cd[1], cd[2]];
+    const colors = [];
+    if (radius > 0) {
+      const x0 = Math.max(0, px - radius), y0 = Math.max(0, py - radius);
+      const w = Math.min(255, px + radius) - x0 + 1, h = Math.min(255, py + radius) - y0 + 1;
+      const d = ctx.getImageData(x0, y0, w, h).data;
+      const seen = new Set();
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue;
+        const k = `${d[i]},${d[i + 1]},${d[i + 2]}`;
+        if (!seen.has(k)) { seen.add(k); colors.push([d[i], d[i + 1], d[i + 2]]); }
+      }
+    }
+    return { nodata: false, center, colors };
+  } catch (e) {
+    console.error("sampleArea failed:", url, e);
+    return null;
+  }
 }
 
 const SEV_RANK = { info: 0, caution: 1, danger: 2, extreme: 3 };
@@ -740,9 +770,9 @@ async function assessLocation(lat, lon, srcLabel) {
   if (state.riskBase) {
     const r = state.riskBase;
     const base = `${JMA}/jmatile/data/risk/${r.basetime}/${r.member}/${r.validtime}/surf`;
-    tasks.kFlood = samplePixel(`${base}/flood/{z}/{x}/{y}.png`, lat, lon, 10);
-    tasks.kLand = samplePixel(`${base}/land/{z}/{x}/{y}.png`, lat, lon, 10);
-    tasks.kInund = samplePixel(`${base}/inund/{z}/{x}/{y}.png`, lat, lon, 10);
+    tasks.kFlood = sampleArea(`${base}/flood/{z}/{x}/{y}.png`, lat, lon, 10);
+    tasks.kLand = sampleArea(`${base}/land/{z}/{x}/{y}.png`, lat, lon, 10);
+    tasks.kInund = sampleArea(`${base}/inund/{z}/{x}/{y}.png`, lat, lon, 10);
   }
 
   const keys = Object.keys(tasks);
@@ -757,20 +787,22 @@ async function assessLocation(lat, lon, srcLabel) {
   else if (R.elev && R.elev.elevation && R.elev.elevation !== "-----") elevTxt = `海抜 ${R.elev.elevation}m`;
 
   // --- 静的ハザード（想定）: 地点判定＋周辺約20mの安全側判定
+  // res===null（通信失敗）は「判定できず」。「区域外」は404/透明が確認できた時だけ表示する。
   const staticDefs = [
-    ["津波", classifyArea(R.tsunami, DEPTH_CLASSES)],
-    ["洪水", classifyArea(R.flood, DEPTH_CLASSES)],
-    ["高潮", classifyArea(R.hightide, DEPTH_CLASSES)],
-  ];
-  const staticRows = staticDefs.map(([name, hit]) => {
-    const badge = hit
-      ? hzBadge(hit.cls.sev, `${hit.near ? "周辺≈20mに" : ""}浸水想定 ${hit.cls.label}`)
-      : hzBadge("safe", "想定区域外");
+    ["津波", R.tsunami],
+    ["洪水", R.flood],
+    ["高潮", R.hightide],
+  ].map(([name, res]) => ({ name, unknown: res === null, hit: res ? classifyArea(res, DEPTH_CLASSES) : null }));
+  const staticRows = staticDefs.map(({ name, unknown, hit }) => {
+    const badge = unknown ? hzBadge("unknown", "判定できず")
+      : hit ? hzBadge(hit.cls.sev, `${hit.near ? "周辺≈20mに" : ""}浸水想定 ${hit.cls.label}`)
+      : hzBadge("safe", "想定区域外※");
     return `<div class="hz-row"><span class="hz-name">${name}</span>${badge}</div>`;
   });
   // 土砂は区域の有無だけ見る（色は区分ごとに違うため存在判定）
   const doshaHit = (res) => res && (res.center || (res.colors || []).length > 0)
     ? { near: !res.center } : null;
+  const doshaUnknown = [R.doseki, R.kyukeisha, R.jisuberi].every((r) => r === null);
   const doshaKinds = [["土石流", doshaHit(R.doseki)], ["急傾斜地", doshaHit(R.kyukeisha)], ["地滑り", doshaHit(R.jisuberi)]]
     .filter(([, h]) => h);
   const doshaAllNear = doshaKinds.length > 0 && doshaKinds.every(([, h]) => h.near);
@@ -778,22 +810,30 @@ async function assessLocation(lat, lon, srcLabel) {
     staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${
       hzBadge("danger", `${doshaAllNear ? "周辺≈20mに" : ""}警戒区域（${doshaKinds.map(([k]) => k).join("・")}）`)
     }</div>`);
+  } else if (doshaUnknown) {
+    staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${hzBadge("unknown", "判定できず")}</div>`);
   } else {
-    staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${hzBadge("safe", "警戒区域外")}</div>`);
+    staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${hzBadge("safe", "警戒区域外※")}</div>`);
   }
 
-  // --- リアルタイム（キキクル）
-  const kiki = (rgb) => rgb && nearestClass(rgb, KIKI_CLASSES);
-  const rtDefs = [["洪水（現在）", kiki(R.kFlood)], ["土砂（現在）", kiki(R.kLand)], ["浸水（現在）", kiki(R.kInund)]];
-  const rtRows = rtDefs.map(([name, cls]) => `<div class="hz-row"><span class="hz-name">${name}</span>${
-    cls ? hzBadge(cls.sev, cls.label) : hzBadge("safe", "平常")
+  // --- リアルタイム（キキクル）: こちらも取得失敗を「平常」と混同しない
+  const rtDefs = [["洪水（現在）", R.kFlood], ["土砂（現在）", R.kLand], ["浸水（現在）", R.kInund]]
+    .map(([name, res]) => ({
+      name,
+      unknown: res === null || res === undefined,
+      cls: res && res.center ? nearestClass(res.center, KIKI_CLASSES) : null,
+    }));
+  const rtRows = rtDefs.map(({ name, unknown, cls }) => `<div class="hz-row"><span class="hz-name">${name}</span>${
+    unknown ? hzBadge("unknown", "判定できず")
+      : cls ? hzBadge(cls.sev, cls.label) : hzBadge("safe", "平常")
   }</div>`);
   let rtWorst = null;
-  for (const [, cls] of rtDefs) {
+  for (const { cls } of rtDefs) {
     if (cls && (!rtWorst || SEV_RANK[cls.sev] > SEV_RANK[rtWorst.sev])) rtWorst = cls;
   }
   // パネル優先順位に反映（info=留意 は昇格対象にしない）
   state.locWorstSev = rtWorst && rtWorst.sev !== "info" ? rtWorst.sev : null;
+  const anyUnknown = staticDefs.some((s) => s.unknown) || doshaUnknown || rtDefs.some((r) => r.unknown);
 
   // --- 最寄り避難所
   const sorted = allShelters
@@ -806,13 +846,13 @@ async function assessLocation(lat, lon, srcLabel) {
 
   // --- 一文要約（verdict）
   const hazardParts = staticDefs
-    .filter(([, hit]) => hit)
-    .map(([name, hit]) => `${name}${hit.near ? "(周辺)" : ""} ${hit.cls.label}`);
+    .filter(({ hit }) => hit)
+    .map(({ name, hit }) => `${name}${hit.near ? "(周辺)" : ""} ${hit.cls.label}`);
   if (doshaKinds.length) hazardParts.push(`土砂災害警戒区域${doshaAllNear ? "(周辺)" : ""}`);
   // 最重要ハザードに対応した最寄り避難所を推奨（なければ単純に最寄り）
-  const sevOf = ([, hit]) => (hit ? SEV_RANK[hit.cls.sev] : -1);
+  const sevOf = (s) => (s.hit ? SEV_RANK[s.hit.cls.sev] : -1);
   const worstStatic = [...staticDefs].sort((a, b) => sevOf(b) - sevOf(a))[0];
-  const targetHazard = worstStatic && worstStatic[1] ? worstStatic[0]
+  const targetHazard = worstStatic && worstStatic.hit ? worstStatic.name
     : doshaKinds.length ? "土砂災害" : null;
   const recommended = (targetHazard
     && sorted.slice(0, 50).find(({ f }) => (f.properties.hazards || []).includes(targetHazard)))
@@ -820,15 +860,25 @@ async function assessLocation(lat, lon, srcLabel) {
   const vClass = rtWorst && (rtWorst.sev === "danger" || rtWorst.sev === "extreme") ? "v-danger"
     : rtWorst && rtWorst.sev === "caution" ? "v-caution"
     : hazardParts.length ? "v-info" : "v-safe";
+  // 「判定できず」がある時は「区域外」「平常」と断定しない（要約とバッジの矛盾防止）
+  const staticUnknownAny = staticDefs.some((s) => s.unknown) || doshaUnknown;
+  const rtUnknownAny = rtDefs.some((r) => r.unknown);
+  const staticText = hazardParts.length
+    ? `この場所は<b>${hazardParts.join("・")}</b>の想定区域。`
+    : staticUnknownAny
+      ? "ハザード想定を確認できませんでした。"
+      : "公表ハザードマップ上、この場所は主要ハザード（津波・洪水・高潮・土砂）の想定区域外。";
+  const rtText = rtWorst ? `現在の危険度は<b>${rtWorst.label}</b>。`
+    : rtUnknownAny ? "現在の危険度は<b>判定できず</b>。"
+    : "現在の危険度は<b>平常</b>。";
   const verdict = `
     <div class="loc-verdict ${vClass}">
-      ${hazardParts.length
-        ? `この場所は<b>${hazardParts.join("・")}</b>の想定区域。`
-        : "この場所は主要ハザード（津波・洪水・高潮・土砂）の想定区域外。"}
-      現在の危険度は<b>${rtWorst ? rtWorst.label : "平常"}</b>。
+      ${staticText}
+      ${rtText}
       ${recommended
         ? `避難先候補: <b>${recommended.f.properties.name}</b>（${fmtDist(recommended.d)}${targetHazard ? `・${targetHazard}対応` : ""}）`
         : ""}
+      ${anyUnknown ? '<br>⚠ 一部の項目を判定できませんでした。通信状況を確認し、公式情報も参照してください。' : ""}
     </div>`;
   const nearRows = nears.map(({ f, d }) => {
     const p = f.properties;
@@ -852,6 +902,7 @@ async function assessLocation(lat, lon, srcLabel) {
     </div>
     <div class="loc-sec">ハザード想定（最大規模想定・ハザードマップポータル）</div>
     ${staticRows.join("")}
+    <div class="panel-note">※「区域外」は公表データ上の判定です。想定外の災害は起こりえます。正式には<a href="https://disaportal.gsi.go.jp/" target="_blank" rel="noopener">重ねるハザードマップ</a>で確認を。</div>
     <div class="loc-sec">現在の危険度（気象庁キキクル）</div>
     ${rtRows.join("")}
     <div class="loc-sec">最寄りの避難所（直線距離）</div>
@@ -910,6 +961,18 @@ map.on("click", (ev) => {
   $("#btn-manual").classList.remove("active");
   map.getContainer().style.cursor = "";
   setUserPos(ev.latlng.lat, ev.latlng.lng, null, "手動指定");
+});
+
+// ============================================================
+// 「このサイトについて」モーダル
+// ============================================================
+$("#btn-about").addEventListener("click", () => { $("#about-overlay").hidden = false; });
+$("#about-close").addEventListener("click", () => { $("#about-overlay").hidden = true; });
+$("#about-overlay").addEventListener("click", (ev) => {
+  if (ev.target === $("#about-overlay")) $("#about-overlay").hidden = true;
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") $("#about-overlay").hidden = true;
 });
 
 // 前回位置の復元

@@ -12,6 +12,7 @@
 <header>
   <h1>防災COP<span class="sub">佐世保 状況認識ダッシュボード</span></h1>
   <span id="cop-level" class="lv0">--</span>
+  <button id="btn-about" title="データ源・免責・プライバシー">ⓘ このサイトについて</button>
   <div id="clock">
     <div class="dtg" id="dtg">------</div>
     <div class="jst" id="jst">----/--/-- --:-- JST</div>
@@ -46,6 +47,7 @@
     <section class="panel" id="panel-obs">
       <h2><span class="dot" id="dot-obs"></span>気象実況（アメダス）<span class="upd" id="upd-obs">--</span></h2>
       <div class="obs-grid" id="obs-grid">読み込み中…</div>
+      <div class="panel-note">WBGT（暑さ指数）は気温・湿度からの簡易推定（小野・登内 2014 の推定式。日射・風は未考慮のため炎天下では実際より低く出ます）。公式値は<a href="https://www.wbgt.env.go.jp/" target="_blank" rel="noopener">環境省 熱中症予防情報サイト</a>で確認してください。</div>
     </section>
 
     <section class="panel" id="panel-fc">
@@ -78,6 +80,7 @@
       </div>
       <div class="shelter-count" id="shelter-count"></div>
       <div id="shelter-list"></div>
+      <div class="panel-note">出典: 国土地理院 指定緊急避難場所データ（2026-07-14取得）。「指定」の避難所が災害時に開設されているとは限りません。開設状況は市町の発表で確認してください。</div>
     </section>
 
   </div>
@@ -87,6 +90,41 @@
   <span class="disclaimer">⚠ 本サイトは参考情報です。避難の判断は市町の避難情報・気象庁の発表に従ってください。</span>
   <span>出典: 気象庁 / 国土地理院（指定緊急避難場所データ・地理院タイル・標高API）/ ハザードマップポータルサイト / 国土数値情報（行政区域）を加工して作成</span>
 </footer>
+
+<div id="about-overlay" hidden>
+  <div id="about-modal">
+    <h3>このサイトについて<button id="about-close" title="閉じる">✕</button></h3>
+
+    <h4>概要</h4>
+    <p>危機管理の分野で用いられるCOP（共通状況図）の考え方を防災に応用した、個人開発の状況認識ダッシュボードです。</p>
+
+    <h4>データ源と更新間隔</h4>
+    <table>
+      <tr><td>警報・注意報 / 地震 / キキクル・雨雲</td><td>気象庁</td><td>5分毎</td></tr>
+      <tr><td>アメダス実況</td><td>気象庁</td><td>10分毎</td></tr>
+      <tr><td>天気予報</td><td>気象庁</td><td>30分毎</td></tr>
+      <tr><td>地図・避難所・標高</td><td>国土地理院</td><td>地図は都度 / 避難所は静的</td></tr>
+      <tr><td>浸水想定・土砂災害警戒区域</td><td>ハザードマップポータルサイト</td><td>静的</td></tr>
+      <tr><td>WBGT（暑さ指数）</td><td>気温・湿度から簡易推定（区分は環境省の基準）</td><td>アメダスと同時</td></tr>
+    </table>
+
+    <h4>限界と免責（必ずお読みください）</h4>
+    <ul>
+      <li>本サイトは<b>個人開発の参考情報</b>です。避難の判断は市町の避難情報・気象庁の発表に従ってください。</li>
+      <li><b>通知機能はありません。</b>就寝中の警報等を知るには「特務機関NERV防災」等の専用アプリとの併用を推奨します。</li>
+      <li>「区域外」は<b>公表データ上の判定</b>です。ハザードマップの想定を超える災害は起こりえます。</li>
+      <li>ハザード判定は公開タイル画像の色照合による簡易判定であり、誤差・誤判定がありえます。正式には<a href="https://disaportal.gsi.go.jp/" target="_blank" rel="noopener">重ねるハザードマップ</a>で確認してください。</li>
+      <li>避難所の開設状況・最新性は保証されません。</li>
+      <li>データ取得に失敗した項目は「判定できず」と表示します（「区域外」とは区別しています）。</li>
+    </ul>
+
+    <h4>プライバシー</h4>
+    <p>位置情報は、標高・住所の判定のために国土地理院のAPIへ送信される以外、どこにも送信されません。本サイトに利用者データを保存するサーバーはなく、位置はお使いのブラウザ内にのみ保存されます。</p>
+
+    <h4>出典</h4>
+    <p>気象庁 / 国土地理院（指定緊急避難場所データ・地理院タイル・標高API・逆ジオコーダ）/ ハザードマップポータルサイト / 「国土数値情報（行政区域データ）」（国土交通省）を加工して作成 / WBGT推定式: 小野・登内（2014, 日本生気象学会雑誌）</p>
+  </div>
+</div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="js/config.js"></script>
