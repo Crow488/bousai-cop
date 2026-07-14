@@ -2,25 +2,25 @@
 
 地域の防災情報（気象警報・雨雲・危険度分布・地震・ハザード想定・避難所）を**1画面に統合**した、市民向けの状況認識（Situational Awareness）ツール。
 
-> *A single-screen disaster situational-awareness dashboard for Japanese local communities. It applies the military concept of a Common Operational Picture (COP) — fusing scattered data sources into one decision-ready view — to civilian disaster preparedness. Pure vanilla JS, no build step, no API keys; all data from official Japanese government open APIs (JMA, GSI, Hazard Map Portal).*
+> *A single-screen disaster situational-awareness dashboard for Japanese local communities. It applies the concept of a Common Operational Picture (COP) — fusing scattered data sources into one decision-ready view — to civilian disaster preparedness. Pure vanilla JS, no build step, no API keys; all data from official Japanese government open APIs (JMA, GSI, Hazard Map Portal).*
 
 ![平常時の画面](docs/screenshot-normal.png)
 
 ---
 
-## コンセプト — 軍事的状況認識の民生転用
+## コンセプト — COP（共通状況図）の考え方を防災へ
 
-危機管理の分野には古典的な解がある。その本質は「**バラバラな情報源を1枚の共通作戦状況図（COP: Common Operational Picture）に統合し、意思決定を速くする**」ことにある。
+災害時の情報は、気象庁・国土地理院・自治体などに**分散して存在する**。個々の情報は正確でも、それらを人間が頭の中で統合して初めて「自分は今どうすべきか」が決まる。この統合作業を、緊迫した状況下の一般市民に強いるのは酷である。
 
-本ツールはその発想を防災に転用したもので、設計に以下の形で反映されている：
+危機管理の分野には、この課題に対する古典的な解がある。**COP（Common Operational Picture／共通状況図）** — バラバラな情報源を1枚の図に統合し、判断を速くするという考え方である。本ツールはその発想を防災に転用したもので、以下の原則を設計に落とし込んでいる。
 
-| 軍事的原則 | 本ツールでの実装 |
+| 原則 | 本ツールでの実装 |
 |---|---|
 | **情報の統合** | 気象庁・国土地理院・ハザードマップポータルに分散する7系統の情報を1画面に集約 |
-| **状況判断の明示** | 収集した情報から総合レベルを自動判定し、**根拠を列挙**して提示（結論だけ出さない） |
+| **判断の根拠を示す** | 総合レベルを自動判定するだけでなく、**そう判定した根拠を列挙**する（結論だけ出さない） |
 | **情報の鮮度管理** | 全パネルに更新時刻と鮮度インジケータ。古い情報で判断させない |
-| **地形評価と現況の重畳** | 静的ハザード想定（＝地形評価）と、リアルタイムのキキクル（＝現在の脅威）を同一地点で併記 |
-| **不明を不明と報告** | 通信失敗時に「区域外（＝安全）」と誤報せず「**判定できず**」と明示する |
+| **静的評価と現況の重畳** | ハザード想定（＝その土地が本来持つ危険性）と、キキクル（＝今まさに起きている危険）を同一地点で併記 |
+| **不明を不明と報告する** | 通信失敗時に「区域外（＝安全）」と誤報せず「**判定できず**」と明示する |
 
 ## 災害時の画面
 
@@ -103,6 +103,10 @@ npm run build      # dist/bousai-cop.html を再生成
 - **避難所は「指定」であり「開設」ではない。** 実際の開設状況は市町の発表で確認が必要。データも静的スナップショット（2026-07-14取得）。
 - **WBGTは簡易推定。** 気温・湿度のみを用いる式のため、日射・風を考慮せず炎天下では過小評価になる（テストで明示的に検証している）。公式値は環境省のサイトを参照。
 - **オフラインでは動かない。** PWA化とキャッシュは今後の課題。
+
+## 対象地域について
+
+同梱している設定・避難所データは、**サンプル地域として長崎県佐世保市・北松浦郡佐々町**を対象にしている（避難所435件）。実装を確認・評価するための参照実装であり、下記のとおり設定ファイルの書き換えだけで任意の地域に移植できる。
 
 ## 別地域への移植
 
