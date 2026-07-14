@@ -733,11 +733,14 @@ header h1 .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-
   font-size: 14px;
   letter-spacing: 0.1em;
   border: 1px solid var(--border);
+  white-space: nowrap;
 }
-#cop-level.lv0 { background: rgba(12,163,12,0.15); color: var(--status-good); }
-#cop-level.lv1 { background: rgba(250,178,25,0.15); color: var(--status-warning); }
-#cop-level.lv2 { background: rgba(236,131,90,0.18); color: var(--status-serious); }
-#cop-level.lv3 { background: rgba(208,59,59,0.22); color: #ff8a8a; }
+/* 警戒レベル相当の公式配色（内閣府ガイドライン: 2=黄 3=赤 4=紫 5=黒） */
+#cop-level.lv1 { background: rgba(12,163,12,0.15); color: var(--status-good); }
+#cop-level.lv2 { background: #f2e700; color: #1a1a00; }
+#cop-level.lv3 { background: #ff2800; color: #fff; }
+#cop-level.lv4 { background: #aa00aa; color: #fff; }
+#cop-level.lv5 { background: #0c000c; color: #fff; border-color: #ff2800; }
 #btn-about {
   background: none;
   border: 1px solid var(--border);
@@ -806,6 +809,40 @@ main {
 .dot.ok { background: var(--status-good); }
 .dot.stale { background: var(--status-warning); }
 .dot.err { background: var(--status-critical); }
+
+/* ---------- 状況判断: 警戒レベルバナー ---------- */
+.judge-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.judge-banner .num {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  width: 44px;
+  text-align: center;
+  flex: none;
+}
+.judge-banner .lbl { font-weight: 700; font-size: 15px; letter-spacing: 0.08em; }
+.judge-banner .act { font-size: 13px; margin-top: 2px; }
+.judge-banner.b1 { background: rgba(12, 163, 12, 0.10); color: var(--status-good); }
+.judge-banner.b2 { background: #f2e700; color: #1a1a00; }
+.judge-banner.b3 { background: #ff2800; color: #fff; }
+.judge-banner.b4 { background: #aa00aa; color: #fff; }
+.judge-banner.b5 { background: #0c000c; color: #fff; border: 2px solid #ff2800; }
+.judge-banner.b3 { animation: cop-pulse 2s ease-in-out infinite; }
+.judge-banner.b4, .judge-banner.b5 { animation: cop-pulse 1.2s ease-in-out infinite; }
+@keyframes cop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 40, 0, 0.65); }
+  50% { box-shadow: 0 0 0 9px rgba(255, 40, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .judge-banner { animation: none !important; }
+}
 
 /* ---------- 状況判断 ---------- */
 #judge-reasons { margin: 0; padding: 0; list-style: none; }
@@ -1159,6 +1196,7 @@ footer .disclaimer { color: var(--status-warning); }
 
     <section class="panel" id="panel-judge">
       <h2><span class="dot" id="dot-judge"></span>状況判断（自動統合）<span class="upd" id="upd-judge">--</span></h2>
+      <div id="judge-banner-slot"></div>
       <ul id="judge-reasons"><li>読み込み中…</li></ul>
     </section>
 
@@ -1778,10 +1816,9 @@ function reorderPanels() {
     const r = Math.max(...state.quakes.map((q) => INT_RANK[q.maxi] || 0));
     scores.quake = r >= 5 ? 90 : r >= 4 ? 70 : 50;
   }
-  // 現在地のリアルタイム危険度
-  scores.loc = state.locWorstSev === "extreme" ? 95
-    : state.locWorstSev === "danger" ? 75
-    : state.locWorstSev === "caution" ? 30 : 0;
+  // 現在地のリアルタイム危険度（キキクルの警戒レベル相当）
+  const kl = state.locKiki ? state.locKiki.lv : 0;
+  scores.loc = kl >= 5 ? 98 : kl >= 4 ? 95 : kl >= 3 ? 75 : kl >= 2 ? 30 : 0;
   // アメダスの強雨
   if (state.heavyRain) scores.obs = 35;
 
@@ -1841,38 +1878,47 @@ $("#shelter-suggest").addEventListener("click", (ev) => {
 });
 
 // ============================================================
-// 状況判断（警報 + 近傍地震の統合 → 総合レベル）
+// 状況判断（警報 + 近傍地震 + 現在地キキクル の統合 → 総合レベル）
+// レベルは国の「警戒レベル」5段階に対応させた「相当」情報（公式配色）。
+// 気象庁の公式対応: 注意報=2相当 / 警報=3相当 / キキクル危険・土砂災害警戒情報=4相当 / 特別警報・災害切迫=5相当
 // ============================================================
-const LEVEL_DEFS = [
-  { label: "平常", icon: "✓", cls: "lv0" },
-  { label: "注意", icon: "△", cls: "lv1" },
-  { label: "警戒", icon: "▲", cls: "lv2" },
-  { label: "危険", icon: "■", cls: "lv3" },
-];
+const LEVEL_DEFS = {
+  1: { chip: "✓ 平常", label: "平常", action: "特段の警戒事項なし", cls: "lv1" },
+  2: { chip: "Lv2相当 注意", label: "警戒レベル2相当", action: "ハザードマップ等で避難行動を確認", cls: "lv2" },
+  3: { chip: "Lv3相当 高齢者等避難", label: "警戒レベル3相当", action: "危険な場所から高齢者等は避難", cls: "lv3" },
+  4: { chip: "Lv4相当 全員避難", label: "警戒レベル4相当", action: "危険な場所から全員避難", cls: "lv4" },
+  5: { chip: "Lv5相当 緊急安全確保", label: "警戒レベル5相当", action: "命の危険 — 直ちに安全確保", cls: "lv5" },
+};
 function renderJudge() {
   if (state.warnings === null && state.quakes === null) return;
-  let level = 0;
+  let level = 1;
   const reasons = [];
 
   if (state.warnings) {
     for (const [muni, list] of Object.entries(state.warnings)) {
       for (const w of list) {
-        level = Math.max(level, w.level);
+        // 注意報(1)→Lv2相当、警報(2)→Lv3相当、特別警報(3)→Lv5相当
+        level = Math.max(level, w.level === 3 ? 5 : w.level === 2 ? 3 : 2);
         reasons.push({ tag: "気象", text: `${muni}に${w.name}` });
       }
     }
   }
+  // 現在地のキキクル（気象庁の警戒レベル相当に公式対応: 注意=2, 警戒=3, 危険=4, 災害切迫=5）
+  if (state.locKiki && state.locKiki.lv >= 2) {
+    level = Math.max(level, state.locKiki.lv);
+    reasons.push({ tag: "現在地", text: `現在地のキキクル: ${state.locKiki.hz}が「${state.locKiki.label}」（レベル${state.locKiki.lv}相当）` });
+  }
   if (state.quakes) {
     for (const q of state.quakes) {
       const r = INT_RANK[q.maxi] || 0;
-      const ql = r >= 5 ? 3 : r >= 4 ? 2 : 1;
+      const ql = r >= 5 ? 4 : r >= 4 ? 3 : 2;
       level = Math.max(level, ql);
       reasons.push({ tag: "地震", text: `24時間以内に近傍で地震（${q.anm} M${q.mag} 最大震度${q.maxi}・約${Math.round(q.dist)}km）` });
     }
   }
   // 熱中症（WBGT簡易推定。33以上=熱中症警戒アラートの発表基準相当）
   if (state.heat && state.heat.w >= 31) {
-    level = Math.max(level, state.heat.w >= 33 ? 2 : 1);
+    level = Math.max(level, state.heat.w >= 33 ? 3 : 2);
     reasons.push({
       tag: "熱中症",
       text: `${state.heat.name}のWBGT簡易推定が${state.heat.w.toFixed(1)}（${state.heat.w >= 33 ? "警戒アラート基準相当" : "危険"}）`,
@@ -1882,11 +1928,22 @@ function renderJudge() {
   const def = LEVEL_DEFS[level];
   const el = $("#cop-level");
   el.className = def.cls;
-  el.textContent = `${def.icon} ${def.label}`;
+  el.textContent = def.chip;
 
-  $("#judge-reasons").innerHTML = reasons.length
+  // 大型レベルバナー（切迫感の担い手。レベル3以上は脈動）
+  $("#judge-banner-slot").innerHTML = `
+    <div class="judge-banner b${level}">
+      <span class="num">${level === 1 ? "✓" : level}</span>
+      <div>
+        <div class="lbl">${def.label}</div>
+        <div class="act">${def.action}</div>
+      </div>
+    </div>`;
+
+  $("#judge-reasons").innerHTML = (reasons.length
     ? reasons.map((r) => `<li><span class="tag">${r.tag}</span><span>${r.text}</span></li>`).join("")
-    : '<li><span class="tag">総合</span><span>特段の警戒事項なし（警報・注意報の発表なし、近傍24時間以内の地震なし）</span></li>';
+    : '<li><span class="tag">総合</span><span>特段の警戒事項なし（警報・注意報の発表なし、近傍24時間以内の地震なし）</span></li>')
+    + '<div class="panel-note">気象庁発表・キキクルからの自動判定（「相当」情報）。市町が発令する避難情報が最優先です。</div>';
 
   const hasErr = state.fetchErrors["warn"] || state.fetchErrors["quake"];
   $("#dot-judge").className = `dot ${hasErr ? "stale" : "ok"}`;
@@ -1950,13 +2007,13 @@ const DEPTH_CLASSES = [
   { rgb: [247, 245, 169], label: "0.5m未満", sev: "caution" },
   { rgb: [255, 255, 179], label: "0.3m未満", sev: "caution" }, // 津波・高潮の新凡例のみ
 ];
-// キキクルの凡例色 → 危険度
+// キキクルの凡例色 → 危険度（lv = 国の警戒レベル相当。気象庁の公式対応に準拠）
 const KIKI_CLASSES = [
-  { rgb: [12, 0, 12], label: "災害切迫", sev: "extreme" },
-  { rgb: [170, 0, 170], label: "危険", sev: "extreme" },
-  { rgb: [255, 40, 0], label: "警戒", sev: "danger" },
-  { rgb: [242, 231, 0], label: "注意", sev: "caution" },
-  { rgb: [242, 242, 255], label: "今後の情報に留意", sev: "info" },
+  { rgb: [12, 0, 12], label: "災害切迫", sev: "extreme", lv: 5 },
+  { rgb: [170, 0, 170], label: "危険", sev: "extreme", lv: 4 },
+  { rgb: [255, 40, 0], label: "警戒", sev: "danger", lv: 3 },
+  { rgb: [242, 231, 0], label: "注意", sev: "caution", lv: 2 },
+  { rgb: [242, 242, 255], label: "今後の情報に留意", sev: "info", lv: 1 },
 ];
 
 function nearestClass(rgb, classes, maxDist = 80) {
@@ -2149,11 +2206,16 @@ async function assessLocation(lat, lon, srcLabel) {
       : cls ? hzBadge(cls.sev, cls.label) : hzBadge("safe", "平常")
   }</div>`);
   let rtWorst = null;
-  for (const { cls } of rtDefs) {
-    if (cls && (!rtWorst || SEV_RANK[cls.sev] > SEV_RANK[rtWorst.sev])) rtWorst = cls;
+  let locKiki = null;
+  for (const { name, cls } of rtDefs) {
+    if (!cls) continue;
+    if (!rtWorst || SEV_RANK[cls.sev] > SEV_RANK[rtWorst.sev]) rtWorst = cls;
+    if (cls.lv >= 2 && (!locKiki || cls.lv > locKiki.lv)) {
+      locKiki = { lv: cls.lv, label: cls.label, hz: name.replace("（現在）", "") };
+    }
   }
-  // パネル優先順位に反映（info=留意 は昇格対象にしない）
-  state.locWorstSev = rtWorst && rtWorst.sev !== "info" ? rtWorst.sev : null;
+  // 状況判断・パネル優先順位に反映（警戒レベル相当）
+  state.locKiki = locKiki;
   const anyUnknown = staticDefs.some((s) => s.unknown) || doshaUnknown || rtDefs.some((r) => r.unknown);
 
   // --- 最寄り避難所
@@ -2232,7 +2294,7 @@ async function assessLocation(lat, lon, srcLabel) {
   $("#dot-loc").className = "dot ok";
   const d = new Date();
   $("#upd-loc").textContent = `判定 ${two(d.getHours())}:${two(d.getMinutes())}`;
-  reorderPanels();
+  renderJudge(); // 現在地キキクルを総合レベル・パネル優先順位に反映
 }
 
 // 最寄り避難所クリック → 地図ジャンプ
