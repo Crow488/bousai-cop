@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>防災COP — 佐世保 状況認識ダッシュボード</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <h1>防災COP<span class="sub">佐世保 状況認識ダッシュボード</span></h1>
+  <span id="cop-level" class="lv0">--</span>
+  <div id="clock">
+    <div class="dtg" id="dtg">------</div>
+    <div class="jst" id="jst">----/--/-- --:-- JST</div>
+  </div>
+</header>
+
+<main>
+  <div id="map"></div>
+
+  <div id="panels">
+
+    <section class="panel" id="panel-judge">
+      <h2><span class="dot" id="dot-judge"></span>状況判断（自動統合）<span class="upd" id="upd-judge">--</span></h2>
+      <ul id="judge-reasons"><li>読み込み中…</li></ul>
+    </section>
+
+    <section class="panel" id="panel-warn">
+      <h2><span class="dot" id="dot-warn"></span>警報・注意報<span class="upd" id="upd-warn">--</span></h2>
+      <div id="warn-rows">読み込み中…</div>
+      <div class="headline" id="warn-headline"></div>
+    </section>
+
+    <section class="panel" id="panel-obs">
+      <h2><span class="dot" id="dot-obs"></span>気象実況（アメダス）<span class="upd" id="upd-obs">--</span></h2>
+      <div class="obs-grid" id="obs-grid">読み込み中…</div>
+    </section>
+
+    <section class="panel" id="panel-fc">
+      <h2><span class="dot" id="dot-fc"></span>天気予報（北部）<span class="upd" id="upd-fc">--</span></h2>
+      <div class="fc-days" id="fc-days"></div>
+      <div class="pops" id="fc-pops"></div>
+    </section>
+
+    <section class="panel" id="panel-quake">
+      <h2><span class="dot" id="dot-quake"></span>地震（直近）<span class="upd" id="upd-quake">--</span></h2>
+      <div id="quake-rows">読み込み中…</div>
+    </section>
+
+    <section class="panel" id="panel-shelter">
+      <h2><span class="dot ok"></span>避難所検索</h2>
+      <div class="shelter-controls">
+        <input id="shelter-q" type="search" placeholder="施設名・住所で検索">
+        <select id="shelter-hazard">
+          <option value="">全災害種別</option>
+          <option>洪水</option>
+          <option>崖崩れ、土石流及び地滑り</option>
+          <option>高潮</option>
+          <option>地震</option>
+          <option>津波</option>
+          <option>大規模な火事</option>
+          <option>内水氾濫</option>
+          <option value="_shelter">指定避難所のみ</option>
+        </select>
+      </div>
+      <div class="shelter-count" id="shelter-count"></div>
+      <div id="shelter-list"></div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <span class="disclaimer">⚠ 本サイトは参考情報です。避難の判断は市町の避難情報・気象庁の発表に従ってください。</span>
+  <span>出典: 気象庁 / 国土地理院（指定緊急避難場所データ・地理院タイル）/ 国土数値情報（行政区域）を加工して作成</span>
+</footer>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
