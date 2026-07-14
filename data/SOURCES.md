@@ -32,3 +32,30 @@
   - 市区町村データは国土交通省・国土数値情報由来のため、国土交通省の指示するクレジット記載が必要。
   - README上で当該データは国土数値情報（行政区域）を2021-09-28に取得して加工したものとされている。
 - 加工内容: 長崎県ファイルから 42202（佐世保市）と 42391（佐々町）だけを抽出し、properties を name のみに整理。元データは簡素化1%版で、出力ファイルは1MB以下。
+
+## リアルタイムAPI（コードから直接取得。リポジトリにデータは含まない）
+
+以下はブラウザから実行時に取得するもので、静的ファイルとして同梱していない。
+
+### 気象庁（防災情報XML/JSON・タイル）
+- 警報・注意報: `https://www.jma.go.jp/bosai/warning/data/warning/{予報区}.json`
+- 天気予報: `https://www.jma.go.jp/bosai/forecast/data/forecast/{予報区}.json`
+- アメダス: `https://www.jma.go.jp/bosai/amedas/data/map/{時刻}.json`
+- 地震: `https://www.jma.go.jp/bosai/quake/data/list.json`
+- 危険度分布（キキクル）タイル: `https://www.jma.go.jp/bosai/jmatile/data/risk/...`
+- 雨雲ナウキャストタイル: `https://www.jma.go.jp/bosai/jmatile/data/nowc/...`
+- 利用条件: 気象庁の情報は出典明記のうえ利用可（政府標準利用規約準拠）。画面フッターと「このサイトについて」に出典を表示している。
+- 負荷への配慮: 更新間隔は5〜30分に制限し、ブラウザのタブが非表示の間はリクエストを送らない実装としている。
+
+### ハザードマップポータルサイト（国土交通省）
+- 津波浸水想定: `https://disaportaldata.gsi.go.jp/raster/04_tsunami_newlegend_data/{z}/{x}/{y}.png`
+- 洪水浸水想定（想定最大規模）: `.../01_flood_l2_shinsuishin_data/...`
+- 高潮浸水想定: `.../03_hightide_l2_shinsuishin_data/...`
+- 土砂災害警戒区域（土石流・急傾斜地・地滑り）: `.../05_dosekiryukeikaikuiki/`, `.../05_kyukeishakeikaikuiki/`, `.../05_jisuberikeikaikuiki/`
+- 出典: ハザードマップポータルサイト（国土交通省）。各想定区域図の作成主体は長崎県・国土交通省等。
+- 注意: 本アプリはタイル画像の色を凡例と照合して簡易判定しており、**公式サイトの判定そのものではない**。正式には重ねるハザードマップ（https://disaportal.gsi.go.jp/）で確認すること。
+
+### 国土地理院
+- 地理院タイル（淡色地図）: `https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png`
+- 標高API: `https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php`
+- 利用条件: 地理院タイル利用規約に従い、出典を明記して利用。

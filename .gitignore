@@ -1,1 +1,20 @@
+# OS
 .DS_Store
+
+# 内部向け作業文書（個人情報・作業手順を含むため公開しない）
+HANDOFF.md
+
+# 作業ログ・AI委任時の生ログ（外部サイトの取得HTML等が混入しうる）
+*.log
+scripts/security_audit_*.md
+scripts/codex_task_security.md
+
+# 秘密情報
+.env
+.env.*
+*.pem
+*.key
+
+# 依存・一時ファイル
+node_modules/
+_mock.html

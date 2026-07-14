@@ -35,6 +35,22 @@ const state = {
 
 const $ = (s) => document.querySelector(s);
 
+/**
+ * HTMLエスケープ。外部から取得した文字列（気象庁APIの地震名・天気文、
+ * 避難所名など）をinnerHTMLへ埋め込む前に必ず通す。
+ * データ源は政府の公式APIだが、「信頼できる情報源だから」を理由に
+ * サニタイズを省かない（多層防御）。
+ */
+function esc(v) {
+  if (v === null || v === undefined) return "";
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error(`HTTP ${r.status}: ${url}`);
@@ -71,7 +87,7 @@ function tickClock() {
 const map = L.map("map", { zoomControl: true }).setView(CONFIG.center, CONFIG.zoom);
 
 L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
-  attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a> | 危険度分布・雨雲: <a href="https://www.jma.go.jp/" target="_blank">気象庁</a>',
+  attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院</a> | 危険度分布・雨雲: <a href="https://www.jma.go.jp/" target="_blank" rel="noopener noreferrer">気象庁</a>',
   maxZoom: 18,
 }).addTo(map);
 
@@ -180,9 +196,9 @@ async function loadStaticGeo() {
         fillOpacity: 0.9,
       });
       m.bindPopup(
-        `<b>${p.name}</b><br>${p.kind}｜${p.muni}<br>${p.address}` +
+        `<b>${esc(p.name)}</b><br>${esc(p.kind)}｜${esc(p.muni)}<br>${esc(p.address)}` +
         (p.hazards && p.hazards.length
-          ? `<div class="popup-hazards">${p.hazards.map((h) => `<span>${h}</span>`).join("")}</div>`
+          ? `<div class="popup-hazards">${p.hazards.map((h) => `<span>${esc(h)}</span>`).join("")}</div>`
           : "")
       );
       f._marker = m;
@@ -221,7 +237,7 @@ async function updateWarnings() {
       const chips = active.length
         ? active.map((x) => `<span class="chip ${LEVEL_CLASS[x.level]}">${x.name}</span>`).join("")
         : '<span class="chip none">発表なし</span>';
-      rows.push(`<div class="warn-row"><span class="muni">${muni.name}</span><span class="warn-chips">${chips}</span></div>`);
+      rows.push(`<div class="warn-row"><span class="muni">${esc(muni.name)}</span><span class="warn-chips">${chips}</span></div>`);
     }
     $("#warn-rows").innerHTML = rows.join("");
     $("#warn-headline").textContent =
@@ -261,7 +277,7 @@ async function updateAmedas() {
     let heat = null; // 最大WBGT {w, name}
     const tiles = CONFIG.amedas.map((st) => {
       const o = all[st.id];
-      if (!o) return `<div class="obs-tile"><div class="name">${st.name}</div><div>欠測</div></div>`;
+      if (!o) return `<div class="obs-tile"><div class="name">${esc(st.name)}</div><div>欠測</div></div>`;
       const v = (key) => (o[key] && o[key][1] === 0 ? o[key][0] : null);
       const temp = v("temp");
       const r1 = v("precipitation1h");
@@ -279,7 +295,7 @@ async function updateAmedas() {
         wbgtRow = `<div class="row"><span>WBGT</span><span class="v"><span class="wbgt-chip" style="background:${cls.bg};color:${cls.fg}">${w.toFixed(1)} ${cls.label}</span></span></div>`;
       }
       return `<div class="obs-tile">
-        <div class="name">${st.name}</div>
+        <div class="name">${esc(st.name)}</div>
         <div class="temp">${temp === null ? "--" : temp.toFixed(1)}<span class="unit">℃</span></div>
         ${wbgtRow}
         <div class="row"><span>雨1h</span><span class="v ${r1 >= 10 ? "rain-warn" : ""}">${r1 === null ? "--" : r1.toFixed(1)}mm</span></div>
@@ -319,7 +335,7 @@ async function updateForecast() {
       const label = i === 0 ? "今日" : i === 1 ? "明日" : "明後日";
       return `<div class="fc-day">
         <div class="d">${label} ${d.getMonth() + 1}/${d.getDate()}（${CONFIG.class10Name}）</div>
-        <div class="wx">${wxIcon(area.weatherCodes[i])} ${area.weathers[i].replace(/　/g, " ")}</div>
+        <div class="wx">${wxIcon(area.weatherCodes[i])} ${esc(area.weathers[i].replace(/　/g, " "))}</div>
         <div class="tt" id="fc-temp-${i}"></div>
       </div>`;
     });
@@ -409,9 +425,9 @@ async function updateQuakes() {
         }
       }
       rows.push(`<div class="quake-row ${near ? "near" : ""}">
-        <span class="int ${intClass(q.maxi)}">${q.maxi}</span>
+        <span class="int ${intClass(q.maxi)}">${esc(q.maxi)}</span>
         <span>
-          <div>${q.anm} M${q.mag}${near ? " ●近傍" : ""}</div>
+          <div>${esc(q.anm)} M${esc(q.mag)}${near ? " ●近傍" : ""}</div>
           <div class="meta">${at.getMonth() + 1}/${at.getDate()} ${two(at.getHours())}:${two(at.getMinutes())}</div>
         </span>
       </div>`);
@@ -427,7 +443,7 @@ async function updateQuakes() {
         fill: true,
         fillColor: "#d95926",
         fillOpacity: 0.25,
-      }).bindPopup(`<b>${q.anm}</b><br>M${q.mag} 最大震度${q.maxi}<br>${q.at.slice(0, 16).replace("T", " ")}`)
+      }).bindPopup(`<b>${esc(q.anm)}</b><br>M${esc(q.mag)} 最大震度${esc(q.maxi)}<br>${esc(q.at.slice(0, 16).replace("T", " "))}`)
         .addTo(quakeLayer);
     }
     $("#quake-rows").innerHTML = rows.join("") || "直近の地震情報はありません。";
@@ -582,7 +598,8 @@ function renderJudge() {
     </div>`;
 
   $("#judge-reasons").innerHTML = (reasons.length
-    ? reasons.map((r) => `<li><span class="tag">${r.tag}</span><span>${r.text}</span></li>`).join("")
+    // reasons の text には外部データ（地震名など）が入るため、描画時に一括エスケープする
+    ? reasons.map((r) => `<li><span class="tag">${esc(r.tag)}</span><span>${esc(r.text)}</span></li>`).join("")
     : '<li><span class="tag">総合</span><span>特段の警戒事項なし（警報・注意報の発表なし、近傍24時間以内の地震なし）</span></li>')
     + '<div class="panel-note">気象庁発表・キキクルからの自動判定（「相当」情報）。市町が発令する避難情報が最優先です。</div>';
 
@@ -614,8 +631,8 @@ function renderShelterList() {
     const p = f.properties;
     const kd = p.kind === "指定緊急避難場所" ? '<span class="kd em">緊急</span>' : '<span class="kd sh">避難所</span>';
     return `<div class="shelter-row" data-i="${allShelters.indexOf(f)}">
-      <div class="nm">${kd}${p.name}</div>
-      <div class="ad">${p.address || ""}</div>
+      <div class="nm">${kd}${esc(p.name)}</div>
+      <div class="ad">${esc(p.address || "")}</div>
     </div>`;
   }).join("") + (hits.length > 80 ? `<div class="shelter-count">…他${hits.length - 80}件（検索で絞り込んでください）</div>` : "");
 }
@@ -903,7 +920,7 @@ async function assessLocation(lat, lon, srcLabel) {
       ${staticText}
       ${rtText}
       ${recommended
-        ? `避難先候補: <b>${recommended.f.properties.name}</b>（${fmtDist(recommended.d)}${targetHazard ? `・${targetHazard}対応` : ""}）`
+        ? `避難先候補: <b>${esc(recommended.f.properties.name)}</b>（${fmtDist(recommended.d)}${targetHazard ? `・${esc(targetHazard)}対応` : ""}）`
         : ""}
       ${anyUnknown ? '<br>⚠ 一部の項目を判定できませんでした。通信状況を確認し、公式情報も参照してください。' : ""}
     </div>`;
@@ -912,7 +929,7 @@ async function assessLocation(lat, lon, srcLabel) {
     const kd = p.kind === "指定緊急避難場所" ? '<span class="kd em">緊急</span>' : '<span class="kd sh">避難所</span>';
     return `<div class="near-row" data-i="${allShelters.indexOf(f)}">
       <span class="dist">${fmtDist(d)}</span>
-      <span>${kd}<span class="nm">${p.name}</span>${p.hazards && p.hazards.length ? `<span class="ad">（${p.hazards.join("・")}）</span>` : ""}</span>
+      <span>${kd}<span class="nm">${esc(p.name)}</span>${p.hazards && p.hazards.length ? `<span class="ad">（${esc(p.hazards.join("・"))}）</span>` : ""}</span>
     </div>`;
   }).join("");
   // 最寄りへの線
@@ -965,7 +982,7 @@ $("#btn-gps").addEventListener("click", () => {
     (pos) => setUserPos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, "GPS"),
     (err) => {
       console.error("geolocation", err);
-      $("#loc-body").innerHTML = `<div class="loc-hint">GPS取得に失敗しました（${err.message}）。
+      $("#loc-body").innerHTML = `<div class="loc-hint">GPS取得に失敗しました（${esc(err.message)}）。
         ファイルを直接開いている場合など、位置情報が使えない環境では「🖱 地図クリックで指定」を使ってください。</div>`;
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
@@ -1024,8 +1041,24 @@ updateAmedas();
 updateForecast();
 updateQuakes();
 
-setInterval(refreshTiles, CONFIG.refresh.tiles);
-setInterval(updateWarnings, CONFIG.refresh.warning);
-setInterval(updateAmedas, CONFIG.refresh.amedas);
-setInterval(updateForecast, CONFIG.refresh.forecast);
-setInterval(updateQuakes, CONFIG.refresh.quake);
+// 定期取得。タブが非表示の間は公的APIを叩かない（開きっぱなしのタブが
+// 無駄なリクエストを出し続けるのを防ぐ。表示に戻った時点で即更新する）。
+function poll(fn, interval) {
+  setInterval(() => {
+    if (!document.hidden) fn();
+  }, interval);
+}
+poll(refreshTiles, CONFIG.refresh.tiles);
+poll(updateWarnings, CONFIG.refresh.warning);
+poll(updateAmedas, CONFIG.refresh.amedas);
+poll(updateForecast, CONFIG.refresh.forecast);
+poll(updateQuakes, CONFIG.refresh.quake);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  // 復帰時に鮮度を取り戻す
+  refreshTiles();
+  updateWarnings();
+  updateAmedas();
+  updateQuakes();
+});
