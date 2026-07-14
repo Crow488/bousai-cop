@@ -1,0 +1,13 @@
+{
+  "name": "bousai-cop",
+  "version": "1.0.0",
+  "description": "COP（共通状況図）の発想で作る防災・状況認識ダッシュボード",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/logic.test.js",
+    "build": "python3 scripts/build_single.py",
+    "start": "python3 -m http.server 8745"
+  },
+  "license": "MIT"
+}

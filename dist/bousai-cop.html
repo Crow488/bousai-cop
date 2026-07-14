@@ -2016,7 +2016,10 @@ const KIKI_CLASSES = [
   { rgb: [242, 242, 255], label: "今後の情報に留意", sev: "info", lv: 1 },
 ];
 
-function nearestClass(rgb, classes, maxDist = 80) {
+// maxDist=30: PNG圧縮による数値のブレは吸収しつつ、地図の背景色（白など）を
+// 誤って「浸水想定あり」と判定しないための閾値。緩めると偽陽性が出る（テスト参照）。
+// 境界のアンチエイリアス色を取りこぼしても、周辺±8pxの走査が拾うため安全側に倒せる。
+function nearestClass(rgb, classes, maxDist = 30) {
   let best = null, bestD = Infinity;
   for (const c of classes) {
     const d = Math.hypot(rgb[0] - c.rgb[0], rgb[1] - c.rgb[1], rgb[2] - c.rgb[2]);
