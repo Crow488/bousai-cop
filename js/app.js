@@ -244,6 +244,7 @@ async function updateAmedas() {
     const d = new Date(latest);
     const ts = `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}${two(d.getHours())}${two(d.getMinutes())}00`;
     const all = await getJSON(`${JMA}/amedas/data/map/${ts}.json`);
+    let heavyRain = false;
     const tiles = CONFIG.amedas.map((st) => {
       const o = all[st.id];
       if (!o) return `<div class="obs-tile"><div class="name">${st.name}</div><div>欠測</div></div>`;
@@ -254,6 +255,7 @@ async function updateAmedas() {
       const wind = v("wind");
       const wd = v("windDirection");
       const hum = v("humidity");
+      if (r1 >= 20 || r24 >= 100) heavyRain = true;
       return `<div class="obs-tile">
         <div class="name">${st.name}</div>
         <div class="temp">${temp === null ? "--" : temp.toFixed(1)}<span class="unit">℃</span></div>
@@ -267,6 +269,8 @@ async function updateAmedas() {
     const t = new Date(latest);
     $("#upd-obs").textContent = `観測 ${two(t.getHours())}:${two(t.getMinutes())}`;
     $("#dot-obs").className = "dot ok";
+    state.heavyRain = heavyRain;
+    reorderPanels();
   } catch (e) {
     console.error(e);
     setFresh("obs", false);
@@ -412,6 +416,86 @@ async function updateQuakes() {
 }
 
 // ============================================================
+// パネル優先順位の自動組み替え（NERV式）
+// 状況が動いたパネルを上へ。スコア40以上は「優先」チップ表示。
+// ============================================================
+const PANEL_IDS = ["judge", "loc", "warn", "obs", "fc", "quake", "shelter"];
+function reorderPanels() {
+  const scores = { judge: 1000, loc: 0, warn: 0, obs: 0, fc: 0, quake: 0, shelter: 0 };
+  // 警報・注意報
+  let maxW = 0;
+  if (state.warnings) {
+    for (const list of Object.values(state.warnings)) for (const w of list) maxW = Math.max(maxW, w.level);
+  }
+  scores.warn = maxW === 3 ? 100 : maxW === 2 ? 80 : maxW === 1 ? 40 : 0;
+  // 近傍地震（24時間以内）
+  if (state.quakes && state.quakes.length) {
+    const r = Math.max(...state.quakes.map((q) => INT_RANK[q.maxi] || 0));
+    scores.quake = r >= 5 ? 90 : r >= 4 ? 70 : 50;
+  }
+  // 現在地のリアルタイム危険度
+  scores.loc = state.locWorstSev === "extreme" ? 95
+    : state.locWorstSev === "danger" ? 75
+    : state.locWorstSev === "caution" ? 30 : 0;
+  // アメダスの強雨
+  if (state.heavyRain) scores.obs = 35;
+
+  PANEL_IDS.forEach((id, i) => {
+    const el = $(`#panel-${id}`);
+    if (!el) return;
+    el.style.order = String((1000 - scores[id]) * 10 + i);
+    const promoted = id !== "judge" && scores[id] >= 40;
+    el.classList.toggle("promoted", promoted);
+    const h2 = el.querySelector("h2");
+    let chip = h2.querySelector(".prio-chip");
+    if (promoted && !chip) {
+      chip = document.createElement("span");
+      chip.className = "prio-chip";
+      chip.textContent = "優先";
+      h2.insertBefore(chip, h2.querySelector(".upd"));
+    } else if (!promoted && chip) {
+      chip.remove();
+    }
+  });
+}
+
+// ============================================================
+// 警報連動の避難所サジェスト（Yahoo式）
+// 発表中の警報に対応する災害種別のワンタップフィルタを出す
+// ============================================================
+const WARN_TO_HAZARD = [
+  [/大雨/, ["土砂災害", "内水氾濫"]],
+  [/洪水/, ["洪水"]],
+  [/高潮/, ["高潮"]],
+];
+function activeHazards() {
+  const out = new Set();
+  if (state.warnings) {
+    for (const list of Object.values(state.warnings)) {
+      for (const w of list) {
+        for (const [re, hzs] of WARN_TO_HAZARD) if (re.test(w.name)) hzs.forEach((h) => out.add(h));
+      }
+    }
+  }
+  return [...out];
+}
+function renderShelterSuggest() {
+  const el = $("#shelter-suggest");
+  const hzs = activeHazards();
+  el.innerHTML = hzs.length
+    ? '<span class="suggest-label">⚠ 発表中の警報に対応:</span>' +
+      hzs.map((h) => `<button class="suggest-chip" data-h="${h}">${h}対応を表示</button>`).join("")
+    : "";
+}
+$("#shelter-suggest").addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".suggest-chip");
+  if (!btn) return;
+  $("#shelter-hazard").value = btn.dataset.h;
+  renderShelterList();
+  $("#panel-shelter").scrollIntoView({ behavior: "smooth" });
+});
+
+// ============================================================
 // 状況判断（警報 + 近傍地震の統合 → 総合レベル）
 // ============================================================
 const LEVEL_DEFS = [
@@ -455,6 +539,8 @@ function renderJudge() {
   $("#dot-judge").className = `dot ${hasErr ? "stale" : "ok"}`;
   const d = new Date();
   $("#upd-judge").textContent = `判定 ${two(d.getHours())}:${two(d.getMinutes())}`;
+  reorderPanels();
+  renderShelterSuggest();
 }
 
 // ============================================================
@@ -671,11 +757,12 @@ async function assessLocation(lat, lon, srcLabel) {
   else if (R.elev && R.elev.elevation && R.elev.elevation !== "-----") elevTxt = `海抜 ${R.elev.elevation}m`;
 
   // --- 静的ハザード（想定）: 地点判定＋周辺約20mの安全側判定
-  const staticRows = [
+  const staticDefs = [
     ["津波", classifyArea(R.tsunami, DEPTH_CLASSES)],
     ["洪水", classifyArea(R.flood, DEPTH_CLASSES)],
     ["高潮", classifyArea(R.hightide, DEPTH_CLASSES)],
-  ].map(([name, hit]) => {
+  ];
+  const staticRows = staticDefs.map(([name, hit]) => {
     const badge = hit
       ? hzBadge(hit.cls.sev, `${hit.near ? "周辺≈20mに" : ""}浸水想定 ${hit.cls.label}`)
       : hzBadge("safe", "想定区域外");
@@ -686,10 +773,10 @@ async function assessLocation(lat, lon, srcLabel) {
     ? { near: !res.center } : null;
   const doshaKinds = [["土石流", doshaHit(R.doseki)], ["急傾斜地", doshaHit(R.kyukeisha)], ["地滑り", doshaHit(R.jisuberi)]]
     .filter(([, h]) => h);
+  const doshaAllNear = doshaKinds.length > 0 && doshaKinds.every(([, h]) => h.near);
   if (doshaKinds.length) {
-    const allNear = doshaKinds.every(([, h]) => h.near);
     staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${
-      hzBadge("danger", `${allNear ? "周辺≈20mに" : ""}警戒区域（${doshaKinds.map(([k]) => k).join("・")}）`)
+      hzBadge("danger", `${doshaAllNear ? "周辺≈20mに" : ""}警戒区域（${doshaKinds.map(([k]) => k).join("・")}）`)
     }</div>`);
   } else {
     staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${hzBadge("safe", "警戒区域外")}</div>`);
@@ -697,19 +784,52 @@ async function assessLocation(lat, lon, srcLabel) {
 
   // --- リアルタイム（キキクル）
   const kiki = (rgb) => rgb && nearestClass(rgb, KIKI_CLASSES);
-  const rtRows = [["洪水（現在）", kiki(R.kFlood)], ["土砂（現在）", kiki(R.kLand)], ["浸水（現在）", kiki(R.kInund)]]
-    .map(([name, cls]) => `<div class="hz-row"><span class="hz-name">${name}</span>${
-      cls ? hzBadge(cls.sev, cls.label) : hzBadge("safe", "平常")
-    }</div>`);
+  const rtDefs = [["洪水（現在）", kiki(R.kFlood)], ["土砂（現在）", kiki(R.kLand)], ["浸水（現在）", kiki(R.kInund)]];
+  const rtRows = rtDefs.map(([name, cls]) => `<div class="hz-row"><span class="hz-name">${name}</span>${
+    cls ? hzBadge(cls.sev, cls.label) : hzBadge("safe", "平常")
+  }</div>`);
+  let rtWorst = null;
+  for (const [, cls] of rtDefs) {
+    if (cls && (!rtWorst || SEV_RANK[cls.sev] > SEV_RANK[rtWorst.sev])) rtWorst = cls;
+  }
+  // パネル優先順位に反映（info=留意 は昇格対象にしない）
+  state.locWorstSev = rtWorst && rtWorst.sev !== "info" ? rtWorst.sev : null;
 
   // --- 最寄り避難所
-  const nears = allShelters
+  const sorted = allShelters
     .map((f) => {
       const [slon, slat] = f.geometry.coordinates;
       return { f, d: haversineKm(lat, lon, slat, slon) * 1000 };
     })
-    .sort((a, b) => a.d - b.d)
-    .slice(0, 5);
+    .sort((a, b) => a.d - b.d);
+  const nears = sorted.slice(0, 5);
+
+  // --- 一文要約（verdict）
+  const hazardParts = staticDefs
+    .filter(([, hit]) => hit)
+    .map(([name, hit]) => `${name}${hit.near ? "(周辺)" : ""} ${hit.cls.label}`);
+  if (doshaKinds.length) hazardParts.push(`土砂災害警戒区域${doshaAllNear ? "(周辺)" : ""}`);
+  // 最重要ハザードに対応した最寄り避難所を推奨（なければ単純に最寄り）
+  const sevOf = ([, hit]) => (hit ? SEV_RANK[hit.cls.sev] : -1);
+  const worstStatic = [...staticDefs].sort((a, b) => sevOf(b) - sevOf(a))[0];
+  const targetHazard = worstStatic && worstStatic[1] ? worstStatic[0]
+    : doshaKinds.length ? "土砂災害" : null;
+  const recommended = (targetHazard
+    && sorted.slice(0, 50).find(({ f }) => (f.properties.hazards || []).includes(targetHazard)))
+    || sorted[0];
+  const vClass = rtWorst && (rtWorst.sev === "danger" || rtWorst.sev === "extreme") ? "v-danger"
+    : rtWorst && rtWorst.sev === "caution" ? "v-caution"
+    : hazardParts.length ? "v-info" : "v-safe";
+  const verdict = `
+    <div class="loc-verdict ${vClass}">
+      ${hazardParts.length
+        ? `この場所は<b>${hazardParts.join("・")}</b>の想定区域。`
+        : "この場所は主要ハザード（津波・洪水・高潮・土砂）の想定区域外。"}
+      現在の危険度は<b>${rtWorst ? rtWorst.label : "平常"}</b>。
+      ${recommended
+        ? `避難先候補: <b>${recommended.f.properties.name}</b>（${fmtDist(recommended.d)}${targetHazard ? `・${targetHazard}対応` : ""}）`
+        : ""}
+    </div>`;
   const nearRows = nears.map(({ f, d }) => {
     const p = f.properties;
     const kd = p.kind === "指定緊急避難場所" ? '<span class="kd em">緊急</span>' : '<span class="kd sh">避難所</span>';
@@ -725,6 +845,7 @@ async function assessLocation(lat, lon, srcLabel) {
   }
 
   $("#loc-body").innerHTML = `
+    ${verdict}
     <div class="loc-summary">
       <span class="place">📍 ${lat.toFixed(4)}, ${lon.toFixed(4)}（${srcLabel}）
       ${muni ? `｜${muni}` : "｜対象市町の外"}</span>｜<span class="elev">${elevTxt}</span>
@@ -739,6 +860,7 @@ async function assessLocation(lat, lon, srcLabel) {
   $("#dot-loc").className = "dot ok";
   const d = new Date();
   $("#upd-loc").textContent = `判定 ${two(d.getHours())}:${two(d.getMinutes())}`;
+  reorderPanels();
 }
 
 // 最寄り避難所クリック → 地図ジャンプ
