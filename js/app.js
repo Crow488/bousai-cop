@@ -81,15 +81,33 @@ const overlayFlood = L.tileLayer("", { opacity: 0.7, maxNativeZoom: 10, maxZoom:
 const overlayLand = L.tileLayer("", { opacity: 0.7, maxNativeZoom: 10, maxZoom: 18 });
 const overlayInund = L.tileLayer("", { opacity: 0.7, maxNativeZoom: 10, maxZoom: 18 });
 
+// 静的ハザードマップ（ハザードマップポータルサイト・想定最大規模）
+// 空タイルは404が返る＝その場所に想定なし
+const DISAPORTAL = "https://disaportaldata.gsi.go.jp/raster";
+const hazardOpts = { opacity: 0.65, maxNativeZoom: 17, maxZoom: 18 };
+const overlayTsunami = L.tileLayer(`${DISAPORTAL}/04_tsunami_newlegend_data/{z}/{x}/{y}.png`, hazardOpts);
+const overlayFloodMax = L.tileLayer(`${DISAPORTAL}/01_flood_l2_shinsuishin_data/{z}/{x}/{y}.png`, hazardOpts);
+const overlayHightide = L.tileLayer(`${DISAPORTAL}/03_hightide_l2_shinsuishin_data/{z}/{x}/{y}.png`, hazardOpts);
+const overlayDosha = L.layerGroup([
+  L.tileLayer(`${DISAPORTAL}/05_dosekiryukeikaikuiki/{z}/{x}/{y}.png`, hazardOpts),
+  L.tileLayer(`${DISAPORTAL}/05_kyukeishakeikaikuiki/{z}/{x}/{y}.png`, hazardOpts),
+  L.tileLayer(`${DISAPORTAL}/05_jisuberikeikaikuiki/{z}/{x}/{y}.png`, hazardOpts),
+]);
+
 const shelterEmergency = L.layerGroup(); // 指定緊急避難場所
 const shelterDesignated = L.layerGroup(); // 指定避難所
 const quakeLayer = L.layerGroup().addTo(map);
+const userLayer = L.layerGroup().addTo(map); // 現在地マーカー
 
 L.control.layers(null, {
   "雨雲（ナウキャスト）": overlayRain,
   "洪水キキクル": overlayFlood,
   "土砂キキクル": overlayLand,
   "浸水キキクル": overlayInund,
+  "〔想定〕津波浸水": overlayTsunami,
+  "〔想定〕洪水浸水": overlayFloodMax,
+  "〔想定〕高潮浸水": overlayHightide,
+  "〔想定〕土砂災害警戒区域": overlayDosha,
   "指定緊急避難場所": shelterEmergency,
   "指定避難所": shelterDesignated,
   "地震震央": quakeLayer,
@@ -106,7 +124,12 @@ legend.onAdd = () => {
     '<span class="sw" style="background:#aa00aa"></span>危険<br>' +
     '<span class="sw" style="background:#ff2800"></span>警戒<br>' +
     '<span class="sw" style="background:#f2e700"></span>注意<br>' +
-    '<span class="sw" style="background:#f2f2ff;border:1px solid #666"></span>今後の情報に留意';
+    '<span class="sw" style="background:#f2f2ff;border:1px solid #666"></span>今後の情報に留意' +
+    '<hr style="border:none;border-top:1px solid #444;margin:4px 0">' +
+    '<b>浸水想定の深さ</b><br>' +
+    '<span class="sw" style="background:#f7f5a9"></span>0.5m未満　<span class="sw" style="background:#ffd8c0"></span>0.5〜3m<br>' +
+    '<span class="sw" style="background:#ffb7b7"></span>3〜5m　<span class="sw" style="background:#ff9191"></span>5〜10m<br>' +
+    '<span class="sw" style="background:#f285c9"></span>10〜20m　<span class="sw" style="background:#dc7adc"></span>20m〜';
   return div;
 };
 legend.addTo(map);
@@ -119,6 +142,7 @@ async function refreshTiles() {
       getJSON(`${JMA}/jmatile/data/nowc/targetTimes_N1.json`),
     ]);
     const r = risk[0]; // 最新（member=immed0）
+    state.riskBase = r; // 現在地のキキクル判定でも使う
     const base = `${JMA}/jmatile/data/risk/${r.basetime}/${r.member}/${r.validtime}/surf`;
     overlayFlood.setUrl(`${base}/flood/{z}/{x}/{y}.png`);
     overlayLand.setUrl(`${base}/land/{z}/{x}/{y}.png`);
@@ -135,6 +159,7 @@ async function refreshTiles() {
 async function loadStaticGeo() {
   try {
     const b = window.INLINE_BOUNDARIES || await getJSON("data/boundaries.geojson");
+    boundariesGeo = b; // 現在地の市町判定で使う
     L.geoJSON(b, {
       style: { color: "#c3c2b7", weight: 1.5, dashArray: "4 3", fill: false },
     }).addTo(map);
@@ -436,6 +461,7 @@ function renderJudge() {
 // 避難所リスト
 // ============================================================
 let allShelters = [];
+let boundariesGeo = null;
 function renderShelterList() {
   const q = $("#shelter-q").value.trim();
   const hz = $("#shelter-hazard").value;
@@ -470,6 +496,308 @@ $("#shelter-list").addEventListener("click", (ev) => {
   map.setView([lat, lon], 15);
   if (f._marker) f._marker.openPopup();
 });
+
+// ============================================================
+// 現在地の状況（GPS / 手動指定 → ハザード判定 + 最寄り避難所）
+// ============================================================
+
+// 浸水想定タイルの凡例色 → 深さクラス（ハザードマップポータル標準配色）
+const DEPTH_CLASSES = [
+  { rgb: [220, 122, 220], label: "20m以上", sev: "extreme" },
+  { rgb: [242, 133, 201], label: "10〜20m", sev: "extreme" },
+  { rgb: [255, 145, 145], label: "5〜10m", sev: "danger" },
+  { rgb: [255, 183, 183], label: "3〜5m", sev: "danger" },
+  { rgb: [255, 216, 192], label: "0.5〜3m", sev: "danger" },
+  { rgb: [247, 245, 169], label: "0.5m未満", sev: "caution" },
+  { rgb: [255, 255, 179], label: "0.3m未満", sev: "caution" }, // 津波・高潮の新凡例のみ
+];
+// キキクルの凡例色 → 危険度
+const KIKI_CLASSES = [
+  { rgb: [12, 0, 12], label: "災害切迫", sev: "extreme" },
+  { rgb: [170, 0, 170], label: "危険", sev: "extreme" },
+  { rgb: [255, 40, 0], label: "警戒", sev: "danger" },
+  { rgb: [242, 231, 0], label: "注意", sev: "caution" },
+  { rgb: [242, 242, 255], label: "今後の情報に留意", sev: "info" },
+];
+
+function nearestClass(rgb, classes, maxDist = 80) {
+  let best = null, bestD = Infinity;
+  for (const c of classes) {
+    const d = Math.hypot(rgb[0] - c.rgb[0], rgb[1] - c.rgb[1], rgb[2] - c.rgb[2]);
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return bestD <= maxDist ? best : null;
+}
+
+// タイル画像を読み、該当地点のピクセル色と周辺（±radius px）の色一覧を返す。
+// 404（=データなし）は null。想定区域の帯は幅数px程度のことがあるため、
+// 地点だけでなく周辺も見て安全側に判定する（z16で8px ≒ 約20m）。
+function sampleArea(urlTemplate, lat, lon, z, radius = 0) {
+  return new Promise((resolve) => {
+    const n = 2 ** z;
+    const xf = (lon + 180) / 360 * n;
+    const lr = lat * Math.PI / 180;
+    const yf = (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * n;
+    const x = Math.floor(xf), y = Math.floor(yf);
+    const px = Math.min(255, Math.floor((xf - x) * 256));
+    const py = Math.min(255, Math.floor((yf - y) * 256));
+    const url = urlTemplate.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const timer = setTimeout(() => resolve(null), 10000);
+    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const c = document.createElement("canvas");
+        c.width = c.height = 256;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const cd = ctx.getImageData(px, py, 1, 1).data;
+        const center = cd[3] === 0 ? null : [cd[0], cd[1], cd[2]];
+        const colors = [];
+        if (radius > 0) {
+          const x0 = Math.max(0, px - radius), y0 = Math.max(0, py - radius);
+          const w = Math.min(255, px + radius) - x0 + 1, h = Math.min(255, py + radius) - y0 + 1;
+          const d = ctx.getImageData(x0, y0, w, h).data;
+          const seen = new Set();
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] === 0) continue;
+            const k = `${d[i]},${d[i + 1]},${d[i + 2]}`;
+            if (!seen.has(k)) { seen.add(k); colors.push([d[i], d[i + 1], d[i + 2]]); }
+          }
+        }
+        resolve({ center, colors });
+      } catch (e) { console.error("sampleArea", e); resolve(null); }
+    };
+    img.src = url;
+  });
+}
+// 地点ピクセルのみ（キキクル用。z10で1px ≒ 約150mなので近傍判定は不要）
+async function samplePixel(urlTemplate, lat, lon, z) {
+  const r = await sampleArea(urlTemplate, lat, lon, z, 0);
+  return r ? r.center : null;
+}
+
+const SEV_RANK = { info: 0, caution: 1, danger: 2, extreme: 3 };
+// 地点 → 周辺の順で分類。{cls, near} を返す（near=trueは「地点は外だが周辺に想定あり」）
+function classifyArea(res, classes) {
+  if (!res) return null;
+  const c = res.center && nearestClass(res.center, classes);
+  if (c) return { cls: c, near: false };
+  let best = null;
+  for (const rgb of res.colors || []) {
+    const k = nearestClass(rgb, classes);
+    if (k && (!best || SEV_RANK[k.sev] > SEV_RANK[best.sev])) best = k;
+  }
+  return best ? { cls: best, near: true } : null;
+}
+
+// 点が市町ポリゴンの内側か（ray casting）
+function pointInRing(lat, lon, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function muniAt(lat, lon) {
+  if (!boundariesGeo) return null;
+  for (const f of boundariesGeo.features) {
+    const g = f.geometry;
+    const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+    for (const poly of polys) {
+      if (pointInRing(lat, lon, poly[0]) && !poly.slice(1).some((h) => pointInRing(lat, lon, h))) {
+        return f.properties.name;
+      }
+    }
+  }
+  return null;
+}
+
+function fmtDist(m) { return m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`; }
+
+function hzBadge(cls, text) { return `<span class="hz-badge ${cls}">${text}</span>`; }
+
+let userPos = null;
+
+function setUserPos(lat, lon, accuracy, srcLabel) {
+  userPos = { lat, lon };
+  try { localStorage.setItem("cop_userpos", JSON.stringify({ lat, lon })); } catch (e) { /* file://等では不可 */ }
+  userLayer.clearLayers();
+  L.circleMarker([lat, lon], {
+    radius: 8, color: "#fff", weight: 2, fillColor: "#3987e5", fillOpacity: 1,
+  }).bindPopup(`<b>現在地</b>（${srcLabel}）`).addTo(userLayer);
+  if (accuracy && accuracy < 3000) {
+    L.circle([lat, lon], { radius: accuracy, color: "#3987e5", weight: 1, fillOpacity: 0.08 }).addTo(userLayer);
+  }
+  map.setView([lat, lon], Math.max(map.getZoom(), 14));
+  assessLocation(lat, lon, srcLabel);
+}
+
+async function assessLocation(lat, lon, srcLabel) {
+  $("#dot-loc").className = "dot stale";
+  $("#loc-body").innerHTML = '<div class="loc-hint">この場所のハザードを判定中…</div>';
+
+  const Z = 16, NEAR = 8; // 8px @z16 ≒ 約20mの近傍も判定
+  const tasks = {
+    elev: getJSON(`https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${lon}&lat=${lat}&outtype=JSON`),
+    tsunami: sampleArea(`${DISAPORTAL}/04_tsunami_newlegend_data/{z}/{x}/{y}.png`, lat, lon, Z, NEAR),
+    flood: sampleArea(`${DISAPORTAL}/01_flood_l2_shinsuishin_data/{z}/{x}/{y}.png`, lat, lon, Z, NEAR),
+    hightide: sampleArea(`${DISAPORTAL}/03_hightide_l2_shinsuishin_data/{z}/{x}/{y}.png`, lat, lon, Z, NEAR),
+    doseki: sampleArea(`${DISAPORTAL}/05_dosekiryukeikaikuiki/{z}/{x}/{y}.png`, lat, lon, Z, NEAR),
+    kyukeisha: sampleArea(`${DISAPORTAL}/05_kyukeishakeikaikuiki/{z}/{x}/{y}.png`, lat, lon, Z, NEAR),
+    jisuberi: sampleArea(`${DISAPORTAL}/05_jisuberikeikaikuiki/{z}/{x}/{y}.png`, lat, lon, Z, NEAR),
+  };
+  // リアルタイム危険度（キキクル）
+  if (state.riskBase) {
+    const r = state.riskBase;
+    const base = `${JMA}/jmatile/data/risk/${r.basetime}/${r.member}/${r.validtime}/surf`;
+    tasks.kFlood = samplePixel(`${base}/flood/{z}/{x}/{y}.png`, lat, lon, 10);
+    tasks.kLand = samplePixel(`${base}/land/{z}/{x}/{y}.png`, lat, lon, 10);
+    tasks.kInund = samplePixel(`${base}/inund/{z}/{x}/{y}.png`, lat, lon, 10);
+  }
+
+  const keys = Object.keys(tasks);
+  const results = await Promise.allSettled(Object.values(tasks));
+  const R = {};
+  keys.forEach((k, i) => { R[k] = results[i].status === "fulfilled" ? results[i].value : null; });
+
+  // --- 位置情報サマリー
+  const muni = muniAt(lat, lon);
+  let elevTxt = "不明";
+  if (R.elev && typeof R.elev.elevation === "number") elevTxt = `海抜 ${R.elev.elevation.toFixed(1)}m`;
+  else if (R.elev && R.elev.elevation && R.elev.elevation !== "-----") elevTxt = `海抜 ${R.elev.elevation}m`;
+
+  // --- 静的ハザード（想定）: 地点判定＋周辺約20mの安全側判定
+  const staticRows = [
+    ["津波", classifyArea(R.tsunami, DEPTH_CLASSES)],
+    ["洪水", classifyArea(R.flood, DEPTH_CLASSES)],
+    ["高潮", classifyArea(R.hightide, DEPTH_CLASSES)],
+  ].map(([name, hit]) => {
+    const badge = hit
+      ? hzBadge(hit.cls.sev, `${hit.near ? "周辺≈20mに" : ""}浸水想定 ${hit.cls.label}`)
+      : hzBadge("safe", "想定区域外");
+    return `<div class="hz-row"><span class="hz-name">${name}</span>${badge}</div>`;
+  });
+  // 土砂は区域の有無だけ見る（色は区分ごとに違うため存在判定）
+  const doshaHit = (res) => res && (res.center || (res.colors || []).length > 0)
+    ? { near: !res.center } : null;
+  const doshaKinds = [["土石流", doshaHit(R.doseki)], ["急傾斜地", doshaHit(R.kyukeisha)], ["地滑り", doshaHit(R.jisuberi)]]
+    .filter(([, h]) => h);
+  if (doshaKinds.length) {
+    const allNear = doshaKinds.every(([, h]) => h.near);
+    staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${
+      hzBadge("danger", `${allNear ? "周辺≈20mに" : ""}警戒区域（${doshaKinds.map(([k]) => k).join("・")}）`)
+    }</div>`);
+  } else {
+    staticRows.push(`<div class="hz-row"><span class="hz-name">土砂災害</span>${hzBadge("safe", "警戒区域外")}</div>`);
+  }
+
+  // --- リアルタイム（キキクル）
+  const kiki = (rgb) => rgb && nearestClass(rgb, KIKI_CLASSES);
+  const rtRows = [["洪水（現在）", kiki(R.kFlood)], ["土砂（現在）", kiki(R.kLand)], ["浸水（現在）", kiki(R.kInund)]]
+    .map(([name, cls]) => `<div class="hz-row"><span class="hz-name">${name}</span>${
+      cls ? hzBadge(cls.sev, cls.label) : hzBadge("safe", "平常")
+    }</div>`);
+
+  // --- 最寄り避難所
+  const nears = allShelters
+    .map((f) => {
+      const [slon, slat] = f.geometry.coordinates;
+      return { f, d: haversineKm(lat, lon, slat, slon) * 1000 };
+    })
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 5);
+  const nearRows = nears.map(({ f, d }) => {
+    const p = f.properties;
+    const kd = p.kind === "指定緊急避難場所" ? '<span class="kd em">緊急</span>' : '<span class="kd sh">避難所</span>';
+    return `<div class="near-row" data-i="${allShelters.indexOf(f)}">
+      <span class="dist">${fmtDist(d)}</span>
+      <span>${kd}<span class="nm">${p.name}</span>${p.hazards && p.hazards.length ? `<span class="ad">（${p.hazards.join("・")}）</span>` : ""}</span>
+    </div>`;
+  }).join("");
+  // 最寄りへの線
+  if (nears.length) {
+    const [nlon, nlat] = nears[0].f.geometry.coordinates;
+    L.polyline([[lat, lon], [nlat, nlon]], { color: "#4cd7a4", weight: 2, dashArray: "6 4" }).addTo(userLayer);
+  }
+
+  $("#loc-body").innerHTML = `
+    <div class="loc-summary">
+      <span class="place">📍 ${lat.toFixed(4)}, ${lon.toFixed(4)}（${srcLabel}）
+      ${muni ? `｜${muni}` : "｜対象市町の外"}</span>｜<span class="elev">${elevTxt}</span>
+    </div>
+    <div class="loc-sec">ハザード想定（最大規模想定・ハザードマップポータル）</div>
+    ${staticRows.join("")}
+    <div class="loc-sec">現在の危険度（気象庁キキクル）</div>
+    ${rtRows.join("")}
+    <div class="loc-sec">最寄りの避難所（直線距離）</div>
+    ${nearRows || '<div class="loc-hint">避難所データ未読込</div>'}
+  `;
+  $("#dot-loc").className = "dot ok";
+  const d = new Date();
+  $("#upd-loc").textContent = `判定 ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+// 最寄り避難所クリック → 地図ジャンプ
+$("#loc-body").addEventListener("click", (ev) => {
+  const row = ev.target.closest(".near-row");
+  if (!row) return;
+  const f = allShelters[Number(row.dataset.i)];
+  if (!f) return;
+  const [lon, lat] = f.geometry.coordinates;
+  const grp = f.properties.kind === "指定緊急避難場所" ? shelterEmergency : shelterDesignated;
+  if (!map.hasLayer(grp)) grp.addTo(map);
+  map.setView([lat, lon], 15);
+  if (f._marker) f._marker.openPopup();
+});
+
+// GPS取得
+$("#btn-gps").addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    $("#loc-body").innerHTML = '<div class="loc-hint">このブラウザは位置情報に対応していません。「地図クリックで指定」を使ってください。</div>';
+    return;
+  }
+  $("#loc-body").innerHTML = '<div class="loc-hint">GPS取得中…（ブラウザの許可ダイアログが出たら許可してください）</div>';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => setUserPos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, "GPS"),
+    (err) => {
+      console.error("geolocation", err);
+      $("#loc-body").innerHTML = `<div class="loc-hint">GPS取得に失敗しました（${err.message}）。
+        ファイルを直接開いている場合など、位置情報が使えない環境では「🖱 地図クリックで指定」を使ってください。</div>`;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+});
+
+// 地図クリックで手動指定（1回クリックで確定）
+let manualMode = false;
+$("#btn-manual").addEventListener("click", () => {
+  manualMode = !manualMode;
+  $("#btn-manual").classList.toggle("active", manualMode);
+  map.getContainer().style.cursor = manualMode ? "crosshair" : "";
+  if (manualMode) {
+    $("#loc-body").innerHTML = '<div class="loc-hint">地図上の任意の場所をクリックすると、その地点を現在地として判定します。</div>';
+  }
+});
+map.on("click", (ev) => {
+  if (!manualMode) return;
+  manualMode = false;
+  $("#btn-manual").classList.remove("active");
+  map.getContainer().style.cursor = "";
+  setUserPos(ev.latlng.lat, ev.latlng.lng, null, "手動指定");
+});
+
+// 前回位置の復元
+try {
+  const saved = JSON.parse(localStorage.getItem("cop_userpos") || "null");
+  if (saved) {
+    // 静的データ読込後に判定させるため少し遅らせる
+    setTimeout(() => setUserPos(saved.lat, saved.lon, null, "前回の位置"), 1500);
+  }
+} catch (e) { /* noop */ }
 
 // ============================================================
 // 起動・更新ループ

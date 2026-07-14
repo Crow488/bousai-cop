@@ -28,6 +28,15 @@
       <ul id="judge-reasons"><li>読み込み中…</li></ul>
     </section>
 
+    <section class="panel" id="panel-loc">
+      <h2><span class="dot" id="dot-loc"></span>現在地の状況<span class="upd" id="upd-loc">--</span></h2>
+      <div class="loc-buttons">
+        <button id="btn-gps">📍 GPSで現在地取得</button>
+        <button id="btn-manual">🖱 地図クリックで指定</button>
+      </div>
+      <div id="loc-body" class="loc-hint">現在地を取得すると、この場所のハザード想定（津波・洪水・高潮・土砂）と現在の危険度、最寄りの避難所を表示します。</div>
+    </section>
+
     <section class="panel" id="panel-warn">
       <h2><span class="dot" id="dot-warn"></span>警報・注意報<span class="upd" id="upd-warn">--</span></h2>
       <div id="warn-rows">読み込み中…</div>
@@ -75,7 +84,7 @@
 
 <footer>
   <span class="disclaimer">⚠ 本サイトは参考情報です。避難の判断は市町の避難情報・気象庁の発表に従ってください。</span>
-  <span>出典: 気象庁 / 国土地理院（指定緊急避難場所データ・地理院タイル）/ 国土数値情報（行政区域）を加工して作成</span>
+  <span>出典: 気象庁 / 国土地理院（指定緊急避難場所データ・地理院タイル・標高API）/ ハザードマップポータルサイト / 国土数値情報（行政区域）を加工して作成</span>
 </footer>
 
 <script src="vendor/leaflet/leaflet.js"></script>

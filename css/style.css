@@ -142,6 +142,70 @@ main {
   width: 44px;
 }
 
+/* ---------- 現在地の状況 ---------- */
+.loc-buttons { display: flex; gap: 6px; margin-bottom: 8px; }
+.loc-buttons button {
+  flex: 1;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.loc-buttons button:hover { border-color: var(--blue); }
+.loc-buttons button.active { border-color: var(--blue); color: var(--blue); }
+.loc-hint { color: var(--muted); font-size: 12px; }
+.loc-summary {
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.loc-summary .place { color: var(--ink-2); }
+.loc-summary .elev { font-weight: 700; }
+.hz-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--grid);
+  font-size: 12px;
+}
+.hz-row:last-child { border-bottom: none; }
+.hz-row .hz-name { flex: none; width: 108px; color: var(--ink-2); }
+.hz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+.hz-badge.safe { background: var(--surface-2); color: var(--muted); font-weight: 400; }
+.hz-badge.info { background: rgba(57,135,229,0.2); color: #86b6ef; }
+.hz-badge.caution { background: var(--jma-advisory); color: #1a1a00; }
+.hz-badge.danger { background: var(--jma-warning); color: #fff; }
+.hz-badge.extreme { background: var(--jma-emergency); color: #fff; }
+.hz-badge.unknown { background: var(--surface-2); color: var(--muted); font-weight: 400; }
+.loc-sec { color: var(--muted); font-size: 11px; letter-spacing: 0.1em; margin: 8px 0 2px; }
+.near-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--grid);
+  cursor: pointer;
+  font-size: 12px;
+  align-items: baseline;
+}
+.near-row:hover { background: var(--surface-2); }
+.near-row:last-child { border-bottom: none; }
+.near-row .dist { flex: none; width: 56px; font-variant-numeric: tabular-nums; color: var(--aqua); font-weight: 700; }
+.near-row .ad { color: var(--muted); font-size: 11px; }
+
 /* ---------- 警報・注意報 ---------- */
 .warn-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--grid); }
 .warn-row:last-child { border-bottom: none; }
