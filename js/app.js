@@ -355,7 +355,7 @@ async function updateForecast() {
         return `<div class="pop">
           <div class="bar-wrap"><div class="bar" style="height:${Math.max(2, v * 0.36)}px"></div></div>
           <div class="val">${v}%</div>
-          <div>${d.getDate()}日${two(d.getHours())}時</div>
+          <div>${d.getDate()}日${d.getHours()}-${d.getHours() + 6}時</div>
         </div>`;
       }).join("");
     }
