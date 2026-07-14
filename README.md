@@ -39,10 +39,22 @@
 
 ## 実行方法
 
+**一番簡単な方法（推奨）**: `dist/bousai-cop.html` をダブルクリックしてブラウザで開くだけ。
+CSS・JS・地図ライブラリ・避難所データがすべて1ファイルに埋め込んであるため、サーバー不要で動く。
+（`index.html` を直接開いても動かない。分割されたCSS/JSを読み込めないため）
+
+開発時（分割ソースで動かす場合）:
+
 ```bash
 cd （リポジトリのルート）/
 python3 -m http.server 8745
 # → http://localhost:8745
+```
+
+ソース（js/css/data）を変更したら1ファイル版を再生成する:
+
+```bash
+python3 scripts/build_single.py   # → dist/bousai-cop.html
 ```
 
 ## 別の地域への移植

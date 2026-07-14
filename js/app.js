@@ -131,16 +131,17 @@ async function refreshTiles() {
 }
 
 // 行政界と避難所（ローカルの静的GeoJSON。出典: data/SOURCES.md）
+// 1ファイル完結版（dist/）では window.INLINE_* に埋め込まれたデータを使う
 async function loadStaticGeo() {
   try {
-    const b = await getJSON("data/boundaries.geojson");
+    const b = window.INLINE_BOUNDARIES || await getJSON("data/boundaries.geojson");
     L.geoJSON(b, {
       style: { color: "#c3c2b7", weight: 1.5, dashArray: "4 3", fill: false },
     }).addTo(map);
   } catch (e) { console.error("boundaries load failed", e); }
 
   try {
-    const s = await getJSON("data/shelters.geojson");
+    const s = window.INLINE_SHELTERS || await getJSON("data/shelters.geojson");
     allShelters = s.features;
     for (const f of allShelters) {
       const [lon, lat] = f.geometry.coordinates;
