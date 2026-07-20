@@ -213,6 +213,20 @@ main {
   width: 44px;
 }
 
+/* ---------- パネル折りたたみ（詳細情報。既定は非表示） ---------- */
+.collapsible .panel-body { display: none; }
+.collapsible.expanded .panel-body { display: block; }
+.panel-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  flex: none;
+}
+.panel-toggle:hover { color: var(--ink-2); }
+
 /* ---------- パネル優先表示（NERV式） ---------- */
 .panel.promoted { border-left: 3px solid var(--status-warning); }
 .prio-chip {

@@ -469,6 +469,23 @@ async function updateQuakes() {
 // パネル優先順位の自動組み替え（NERV式）
 // 状況が動いたパネルを上へ。スコア40以上は「優先」チップ表示。
 // ============================================================
+
+// 詳細パネル（気象実況・天気予報・地震）の開閉。
+// 既定は閉じておき、「今すぐ見るべき情報」だけを常時表示する（ニールセン⑧対応）。
+function setPanelExpanded(el, expanded) {
+  el.classList.toggle("expanded", expanded);
+  const btn = el.querySelector(".panel-toggle");
+  if (!btn) return;
+  btn.setAttribute("aria-expanded", String(expanded));
+  btn.textContent = expanded ? "詳細を閉じる ▴" : "詳細を表示 ▾";
+}
+document.querySelectorAll(".panel-toggle").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const el = btn.closest(".panel");
+    setPanelExpanded(el, !el.classList.contains("expanded"));
+  });
+});
+
 const PANEL_IDS = ["judge", "loc", "warn", "obs", "fc", "quake", "shelter"];
 function reorderPanels() {
   const scores = { judge: 1000, loc: 0, warn: 0, obs: 0, fc: 0, quake: 0, shelter: 0 };
@@ -505,6 +522,8 @@ function reorderPanels() {
     } else if (!promoted && chip) {
       chip.remove();
     }
+    // 優先扱いになった詳細パネル（例: 強雨時の気象実況）は自動で開く
+    if (promoted && el.classList.contains("collapsible")) setPanelExpanded(el, true);
   });
 }
 
