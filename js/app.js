@@ -211,6 +211,17 @@ async function loadStaticGeo() {
           ? `<div class="popup-hazards">${p.hazards.map((h) => `<span>${esc(h)}</span>`).join("")}</div>`
           : "")
       );
+      // 「地図クリックで指定」中は、マーカー自体のクリックも現在地指定として扱う。
+      // Leafletはマーカークリックをmapのclickへ伝播させないため、無指定だと
+      // マーカーの上だけ操作が無反応になる（ニールセン⑨対応）。
+      m.on("click", () => {
+        if (!manualMode) return;
+        manualMode = false;
+        $("#btn-manual").classList.remove("active");
+        map.getContainer().style.cursor = "";
+        m.closePopup();
+        setUserPos(lat, lon, null, "手動指定");
+      });
       f._marker = m;
       (isEm ? shelterEmergency : shelterDesignated).addLayer(m);
     }
