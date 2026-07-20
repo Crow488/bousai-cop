@@ -398,6 +398,7 @@ main {
 .shelter-row .kd { font-size: 10px; padding: 0 5px; border-radius: 3px; margin-right: 4px; }
 .shelter-row .kd.em { background: rgba(25,158,112,0.25); color: #4cd7a4; }
 .shelter-row .kd.sh { background: rgba(57,135,229,0.25); color: #86b6ef; }
+.shelter-row .dist { float: right; font-variant-numeric: tabular-nums; color: var(--aqua); font-weight: 700; font-size: 11px; }
 .shelter-count { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
 
 /* ---------- 凡例（地図内） ---------- */
