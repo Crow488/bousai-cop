@@ -45,22 +45,28 @@
       <div class="headline" id="warn-headline"></div>
     </section>
 
-    <section class="panel" id="panel-obs">
-      <h2><span class="dot" id="dot-obs"></span>気象実況（アメダス）<span class="upd" id="upd-obs">--</span></h2>
-      <div class="obs-grid" id="obs-grid">読み込み中…</div>
-      <div class="panel-note">WBGT（暑さ指数）は気温・湿度からの簡易推定（小野・登内 2014 の推定式。日射・風は未考慮のため炎天下では実際より低く出ます）。公式値は<a href="https://www.wbgt.env.go.jp/" target="_blank" rel="noopener">環境省 熱中症予防情報サイト</a>で確認してください。</div>
+    <section class="panel collapsible" id="panel-obs">
+      <h2><span class="dot" id="dot-obs"></span>気象実況（アメダス）<span class="upd" id="upd-obs">--</span><button class="panel-toggle" data-panel="obs" aria-expanded="false">詳細を表示 ▾</button></h2>
+      <div class="panel-body">
+        <div class="obs-grid" id="obs-grid">読み込み中…</div>
+        <div class="panel-note">WBGT（暑さ指数）は気温・湿度からの簡易推定（小野・登内 2014 の推定式。日射・風は未考慮のため炎天下では実際より低く出ます）。公式値は<a href="https://www.wbgt.env.go.jp/" target="_blank" rel="noopener">環境省 熱中症予防情報サイト</a>で確認してください。</div>
+      </div>
     </section>
 
-    <section class="panel" id="panel-fc">
-      <h2><span class="dot" id="dot-fc"></span>天気予報（北部）<span class="upd" id="upd-fc">--</span></h2>
-      <div class="fc-days" id="fc-days"></div>
-      <div class="loc-sec">降水確率（6時間ごと）</div>
-      <div class="pops" id="fc-pops"></div>
+    <section class="panel collapsible" id="panel-fc">
+      <h2><span class="dot" id="dot-fc"></span>天気予報（北部）<span class="upd" id="upd-fc">--</span><button class="panel-toggle" data-panel="fc" aria-expanded="false">詳細を表示 ▾</button></h2>
+      <div class="panel-body">
+        <div class="fc-days" id="fc-days"></div>
+        <div class="loc-sec">降水確率（6時間ごと）</div>
+        <div class="pops" id="fc-pops"></div>
+      </div>
     </section>
 
-    <section class="panel" id="panel-quake">
-      <h2><span class="dot" id="dot-quake"></span>地震（直近）<span class="upd" id="upd-quake">--</span></h2>
-      <div id="quake-rows">読み込み中…</div>
+    <section class="panel collapsible" id="panel-quake">
+      <h2><span class="dot" id="dot-quake"></span>地震（直近）<span class="upd" id="upd-quake">--</span><button class="panel-toggle" data-panel="quake" aria-expanded="false">詳細を表示 ▾</button></h2>
+      <div class="panel-body">
+        <div id="quake-rows">読み込み中…</div>
+      </div>
     </section>
 
     <section class="panel" id="panel-shelter">
