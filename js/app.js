@@ -632,22 +632,47 @@ let boundariesGeo = null;
 function renderShelterList() {
   const q = $("#shelter-q").value.trim();
   const hz = $("#shelter-hazard").value;
-  const hits = allShelters.filter((f) => {
+  const hasFilter = !!(q || hz);
+
+  // 現在地未設定・検索条件もない状態では、435件を無条件に出さない。
+  // 認識より記憶をさせないため（ニールセン⑥）、次にすべき行動だけを示す。
+  if (!hasFilter && !userPos) {
+    $("#shelter-count").textContent = `全${allShelters.length}件`;
+    $("#shelter-list").innerHTML =
+      '<div class="loc-hint">現在地を取得すると近い順に表示されます（上の「📍GPSで現在地取得」）。それまでは施設名・住所で検索してください。</div>';
+    return;
+  }
+
+  let hits = allShelters.filter((f) => {
     const p = f.properties;
     if (q && !(p.name.includes(q) || (p.address || "").includes(q))) return false;
     if (hz === "_shelter") return p.kind === "指定避難所";
     if (hz) return p.kind === "指定緊急避難場所" && (p.hazards || []).some((h) => h.includes(hz));
     return true;
   });
+
+  // 現在地が分かっていれば距離順に並べ替える（分からなければ従来通りデータ順）
+  let dists = null;
+  if (userPos) {
+    const withDist = hits.map((f) => {
+      const [slon, slat] = f.geometry.coordinates;
+      return { f, d: haversineKm(userPos.lat, userPos.lon, slat, slon) * 1000 };
+    }).sort((a, b) => a.d - b.d);
+    hits = withDist.map((x) => x.f);
+    dists = withDist.map((x) => x.d);
+  }
+
+  const limit = userPos && !hasFilter ? 20 : 80;
   $("#shelter-count").textContent = `${hits.length}件 / 全${allShelters.length}件`;
-  $("#shelter-list").innerHTML = hits.slice(0, 80).map((f, i) => {
+  $("#shelter-list").innerHTML = hits.slice(0, limit).map((f, i) => {
     const p = f.properties;
     const kd = p.kind === "指定緊急避難場所" ? '<span class="kd em">緊急</span>' : '<span class="kd sh">避難所</span>';
+    const dist = dists ? `<span class="dist">${Math.round(dists[i])}m</span>` : "";
     return `<div class="shelter-row" data-i="${allShelters.indexOf(f)}">
-      <div class="nm">${kd}${esc(p.name)}</div>
+      <div class="nm">${kd}${esc(p.name)}${dist}</div>
       <div class="ad">${esc(p.address || "")}</div>
     </div>`;
-  }).join("") + (hits.length > 80 ? `<div class="shelter-count">…他${hits.length - 80}件（検索で絞り込んでください）</div>` : "");
+  }).join("") + (hits.length > limit ? `<div class="shelter-count">…他${hits.length - limit}件（検索で絞り込んでください）</div>` : "");
 }
 $("#shelter-q").addEventListener("input", renderShelterList);
 $("#shelter-hazard").addEventListener("change", renderShelterList);
@@ -802,6 +827,7 @@ function setUserPos(lat, lon, accuracy, srcLabel) {
   }
   map.setView([lat, lon], Math.max(map.getZoom(), 14));
   assessLocation(lat, lon, srcLabel);
+  renderShelterList();
 }
 
 async function assessLocation(lat, lon, srcLabel) {
