@@ -128,9 +128,9 @@ main {
   #clock .dtg { font-size: 12px; }
   #clock .jst { font-size: 10px; }
 }
-/* 特に狭い端末: 時計はJSTのみ */
+/* 特に狭い端末: 日時本体だけ残し、「日本時間」のラベルは畳む */
 @media (max-width: 420px) {
-  #clock .dtg { display: none; }
+  #clock .jst { display: none; }
 }
 
 /* ---------- パネル共通 ---------- */

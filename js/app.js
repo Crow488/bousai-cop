@@ -70,15 +70,12 @@ function setFresh(panel, ok) {
   state.fetchErrors[panel] = !ok;
 }
 
-// ---------- 時計 / DTG（日時群: 陸自・米軍式の日付時刻表記） ----------
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+// ---------- 時計 ----------
 function tickClock() {
   const d = new Date();
-  // JSTのタイムゾーン符字は "I"
   $("#dtg").textContent =
-    `${two(d.getDate())}${two(d.getHours())}${two(d.getMinutes())}I ${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
-  $("#jst").textContent =
-    `${d.getFullYear()}/${two(d.getMonth() + 1)}/${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())} JST`;
+    `${d.getFullYear()}/${two(d.getMonth() + 1)}/${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+  $("#jst").textContent = "日本時間";
 }
 
 // ============================================================
