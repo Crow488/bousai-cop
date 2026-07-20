@@ -714,6 +714,7 @@ $("#shelter-list").addEventListener("click", (ev) => {
   if (!map.hasLayer(grp)) grp.addTo(map);
   map.setView([lat, lon], 15);
   if (f._marker) f._marker.openPopup();
+  $("#map").scrollIntoView({ behavior: "smooth" });
 });
 
 // ============================================================
